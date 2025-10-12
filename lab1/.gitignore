@@ -1,0 +1,7 @@
+.direnv
+flake.lock
+*.o
+*.txt
+gen_crc64table
+main
+crc64table.h
