@@ -10,6 +10,20 @@
 
 #include "md5.h"
 
+#define min(a, b)                                                              \
+  ({                                                                           \
+    __typeof__(a) _a = (a);                                                    \
+    __typeof__(b) _b = (b);                                                    \
+    _a < _b ? _a : _b;                                                         \
+  })
+
+#define max(a, b)                                                              \
+  ({                                                                           \
+    __typeof__(a) _a = (a);                                                    \
+    __typeof__(b) _b = (b);                                                    \
+    _a > _b ? _a : _b;                                                         \
+  })
+
 typedef struct {
   size_t i;
   int fd;
@@ -38,10 +52,10 @@ typedef struct {
   size_t size;
 } rand_mmap_ctx;
 
-int parse_args(int argc, char *argv[], size_t *bs, int *fd) {
+int parse_args(int argc, char *argv[], size_t *bs, int *fd, bool *verbose) {
   int ibs;
-  if (argc != 3) {
-    printf("Use: ./main block-size file-name\n");
+  if (argc < 3) {
+    printf("Use: ./main block-size file-name [-v]\n");
     return 1;
   }
 
@@ -59,6 +73,13 @@ int parse_args(int argc, char *argv[], size_t *bs, int *fd) {
     return 1;
   }
 
+  *verbose = false;
+  if (argc >= 4) {
+    if (strcmp(argv[3], "-v") == 0) {
+      *verbose = true;
+    }
+  }
+
   return 0;
 }
 
@@ -69,12 +90,14 @@ void seq_read_ctx_init(seq_read_ctx *ctx, int fd) {
   ctx->i = 0;
 }
 
-bool seq_read_iter(void *ctx_, uint8_t *buffer, size_t buffer_size) {
+size_t seq_read_iter(void *ctx_, uint8_t *buffer, size_t buffer_size,
+                     bool *done) {
   seq_read_ctx *ctx = ctx_;
   size_t read_len = read(ctx->fd, buffer, buffer_size);
-  // print_buffer(buffer, read_len);
 
-  return read_len < buffer_size;
+  *done = read_len < buffer_size;
+
+  return read_len;
 }
 
 void rand_read_ctx_init(rand_read_ctx *ctx, int fd, size_t block_size) {
@@ -82,21 +105,21 @@ void rand_read_ctx_init(rand_read_ctx *ctx, int fd, size_t block_size) {
   lseek(fd, 0, SEEK_SET);
   fstat(fd, &st);
 
+  size_t r_offset =
+      st.st_size % block_size == 0 ? block_size : (st.st_size % block_size);
+
   ctx->l = 0;
-  ctx->r = st.st_size - (st.st_size % block_size) - block_size;
+  ctx->r = st.st_size - r_offset;
   ctx->fd = fd;
   ctx->s = 0;
 }
 
-bool rand_read_iter(void *ctx_, uint8_t *buffer, size_t buffer_size) {
+size_t rand_read_iter(void *ctx_, uint8_t *buffer, size_t buffer_size,
+                      bool *done) {
   rand_read_ctx *ctx = ctx_;
   size_t read_len;
   size_t pos = (1 - ctx->s) * ctx->l + ctx->s * ctx->r;
-  bool done = ctx->r < ctx->l;
-
-  if (done) {
-    return done;
-  }
+  *done = ctx->r - ctx->l < buffer_size;
 
   lseek(ctx->fd, pos, SEEK_SET);
   read_len = read(ctx->fd, buffer, buffer_size);
@@ -105,7 +128,7 @@ bool rand_read_iter(void *ctx_, uint8_t *buffer, size_t buffer_size) {
   ctx->r -= ctx->s * buffer_size;
   ctx->s = 1 - ctx->s;
 
-  return done;
+  return read_len;
 }
 
 void seq_mmap_ctx_init(seq_mmap_ctx *ctx, int fd) {
@@ -121,17 +144,16 @@ void seq_mmap_ctx_init(seq_mmap_ctx *ctx, int fd) {
 
 void seq_mmap_ctx_free(seq_mmap_ctx *ctx) { munmap(ctx->mem, ctx->size); }
 
-bool seq_mmap_iter(void *ctx_, uint8_t *buffer, size_t buffer_size) {
+size_t seq_mmap_iter(void *ctx_, uint8_t *buffer, size_t buffer_size,
+                     bool *done) {
   seq_mmap_ctx *ctx = ctx_;
+  size_t read_len = min(buffer_size, ctx->size - ctx->i);
 
-  if (ctx->i + buffer_size > ctx->size) {
-    return true;
-  }
-
-  memcpy(buffer, ctx->mem + ctx->i, buffer_size);
+  memcpy(buffer, ctx->mem + ctx->i, read_len);
   ctx->i += buffer_size;
 
-  return false;
+  *done = ctx->i >= ctx->size;
+  return read_len;
 }
 
 void rand_mmap_ctx_init(rand_mmap_ctx *ctx, int fd, size_t block_size) {
@@ -139,8 +161,11 @@ void rand_mmap_ctx_init(rand_mmap_ctx *ctx, int fd, size_t block_size) {
   lseek(fd, 0, SEEK_SET);
   fstat(fd, &st);
 
+  size_t r_offset =
+      st.st_size % block_size == 0 ? block_size : (st.st_size % block_size);
+
   ctx->l = 0;
-  ctx->r = st.st_size - (st.st_size % block_size) - block_size;
+  ctx->r = st.st_size - r_offset;
   ctx->fd = fd;
   ctx->s = 0;
   ctx->size = st.st_size;
@@ -149,50 +174,50 @@ void rand_mmap_ctx_init(rand_mmap_ctx *ctx, int fd, size_t block_size) {
 
 void rand_mmap_ctx_free(rand_mmap_ctx *ctx) { munmap(ctx->mem, ctx->size); }
 
-bool rand_mmap_iter(void *ctx_, uint8_t *buffer, size_t buffer_size) {
+size_t rand_mmap_iter(void *ctx_, uint8_t *buffer, size_t buffer_size,
+                      bool *done) {
   rand_mmap_ctx *ctx = ctx_;
-  size_t read_len;
   size_t pos = (1 - ctx->s) * ctx->l + ctx->s * ctx->r;
-  bool done = ctx->r < ctx->l;
+  // printf("size=%zu, pos=%zu, l=%zu, r=%zu\n", ctx->size, pos, ctx->l,
+  // ctx->r);
+  size_t read_len = min(buffer_size, ctx->size - pos);
+  *done = ctx->r - ctx->l <= 0;
 
-  if (done) {
-    return done;
-  }
-
-  memcpy(buffer, ctx->mem + pos, buffer_size);
+  memcpy(buffer, ctx->mem + pos, read_len);
 
   ctx->l += (1 - ctx->s) * buffer_size;
   ctx->r -= ctx->s * buffer_size;
   ctx->s = 1 - ctx->s;
 
-  return done;
+  return read_len;
 }
 
 int main(int argc, char *argv[]) {
   int parse_arg_code;
   size_t bs;
   int fd;
+  bool verbose;
 
-  if ((parse_arg_code = parse_args(argc, argv, &bs, &fd)) != 0) {
+  if ((parse_arg_code = parse_args(argc, argv, &bs, &fd, &verbose)) != 0) {
     return parse_arg_code;
   }
 
   seq_read_ctx c1;
   seq_read_ctx_init(&c1, fd);
-  crc64_be_blocks(seq_read_iter, &c1, bs, "seq read()", 0);
+  crc64_be_blocks(seq_read_iter, &c1, bs, "seq read()", 0, verbose);
 
   rand_read_ctx c2;
   rand_read_ctx_init(&c2, fd, bs);
-  crc64_be_blocks(rand_read_iter, &c2, bs, "rand read()", 0);
+  crc64_be_blocks(rand_read_iter, &c2, bs, "rand read()", 0, verbose);
 
   seq_mmap_ctx c3;
   seq_mmap_ctx_init(&c3, fd);
-  crc64_be_blocks(seq_mmap_iter, &c3, bs, "seq mmap()", 0);
+  crc64_be_blocks(seq_mmap_iter, &c3, bs, "seq mmap()", 0, verbose);
   seq_mmap_ctx_free(&c3);
 
   rand_mmap_ctx c4;
   rand_mmap_ctx_init(&c4, fd, bs);
-  crc64_be_blocks(rand_mmap_iter, &c4, bs, "rand mmap()", 0);
+  crc64_be_blocks(rand_mmap_iter, &c4, bs, "rand mmap()", 0, verbose);
   rand_mmap_ctx_free(&c4);
 
   close(fd);

@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-std=c23
+CFLAGS=-std=c23 -g
 DEPS = md5.h crc64.h
 OBJ = md5.o crc64.o main.o
 

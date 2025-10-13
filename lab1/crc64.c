@@ -41,34 +41,6 @@
 #define A(x) x
 #endif
 
-/**
- * @brief  Convert an unsigned integer (uint64_t) from host byte order
- *         to network byte order (big-endian). Do nothing if host byte
- *         order is already big-endian.
- * @param  hostlonglong
- *         Numerical value (uint64_t) in host byte order.
- * @return Numerical value (uint64_t) in network byte order.
- */
-uint64_t htonll(uint64_t hostlonglong) {
-#if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-  return __builtin_bswap64(hostlonglong);
-#elif (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-  return hostlonglong;
-#else
-#error "integer byte order could not be determined!"
-#endif
-}
-
-uint64_t ntohll(uint64_t netlonglong) {
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-  return netlonglong;
-#elif (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-  return __builtin_bswap64(netlonglong);
-#else
-#error "integer byte order could not be determined!"
-#endif
-}
-
 void print_buffer(const uint8_t *buffer, size_t read_len) {
   printf("Read %zu bytes:", read_len);
   for (size_t i = 0; i < read_len; i++) {
@@ -85,38 +57,54 @@ void print_buffer(const uint8_t *buffer, size_t read_len) {
  * @len: length of buffer @p
  */
 uint64_t crc64_be(uint64_t crc, const void *p, size_t len) {
-  // crc = ntohll(crc);
   size_t i, t;
   const unsigned char *_p = p;
-  // printf("%zu -> ", crc);
   for (i = 0; i < len; i++) {
     t = (A(crc) ^ (*_p++)) & 0xFF;
     crc = crc64table[t] ^ (crc << 8);
   }
-  // printf("%zu\n", crc);
-  // crc = htonll(crc);
+
   return crc;
 }
 
-void crc64_be_blocks(bool (*next)(void *, uint8_t *, size_t), void *iter_ctx,
-                     size_t buffer_size, char *name, uint64_t seed) {
+void crc64_be_blocks(size_t (*next)(void *, uint8_t *, size_t, bool *),
+                     void *iter_ctx, size_t buffer_size, char *name,
+                     uint64_t seed, bool verbose) {
   uint64_t acc = seed;
   uint8_t *buffer = malloc(buffer_size);
   size_t blocks_read = 0;
   struct timespec start, end;
   uint64_t delta_us;
-
-  memset(buffer, 0, buffer_size);
+  bool done = false;
+  size_t read_len;
 
   if (buffer == NULL) {
     errno = ENOMEM;
     return;
   }
 
+  memset(buffer, 0, buffer_size);
+
   clock_gettime(CLOCK_REALTIME, &start);
 
-  while (!next(iter_ctx, buffer, buffer_size)) {
+  while (!done) {
+    read_len = next(iter_ctx, buffer, buffer_size, &done);
+    if (read_len == 0) {
+      break;
+    }
+    if (read_len < buffer_size) {
+      memset(buffer + read_len, 0, buffer_size - read_len);
+    }
     blocks_read += 1;
+
+    if (verbose) {
+      fprintf(stderr, "Block %zu:\t", blocks_read);
+      for (size_t i = 0; i < buffer_size; i++) {
+        fprintf(stderr, "%02X ", buffer[i]);
+      }
+      fprintf(stderr, "\n");
+    }
+
     acc = crc64_be(acc, buffer, buffer_size);
   }
 
@@ -126,12 +114,7 @@ void crc64_be_blocks(bool (*next)(void *, uint8_t *, size_t), void *iter_ctx,
 
   delta_us = (end.tv_sec - start.tv_sec) * 1000000 +
              (end.tv_nsec - start.tv_nsec) / 1000;
-  // printf("%zu\n", acc);
-  // uint8_t *p = (uint8_t *)&acc;
-  // for (size_t i = 0; i < 8; i++) {
-  //   printf("%02x", p[i]);
-  // }
-  printf("%" PRIx64 "  %s\t took %zuus BR=%zu\n", acc, name, delta_us,
+
+  printf("%016lx  %s\t took: %zuus\tblocks read: %zu\n", acc, name, delta_us,
          blocks_read);
-  // print_hash(ctx.digest, name, delta_us, blocks_read);
 }

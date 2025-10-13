@@ -23,8 +23,9 @@
  */
 uint64_t crc64_be(uint64_t crc, const void *p, size_t len);
 
-void crc64_be_blocks(bool (*next)(void *, uint8_t *, size_t), void *iter_ctx,
-                     size_t buffer_size, char *name, uint64_t seed);
+void crc64_be_blocks(size_t (*next)(void *, uint8_t *, size_t, bool *),
+                     void *iter_ctx, size_t buffer_size, char *name,
+                     uint64_t seed, bool verbose);
 
 void print_buffer(const uint8_t *buffer, size_t read_len);
 

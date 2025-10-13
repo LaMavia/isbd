@@ -30,7 +30,7 @@
           buildInputs = [
             llvm.libcxx
             pkgs.openssl
-
+            pkgs.valgrind
           ];
 
           CPATH = builtins.concatStringsSep ":" [
