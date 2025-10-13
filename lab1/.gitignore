@@ -5,3 +5,4 @@ flake.lock
 gen_crc64table
 main
 crc64table.h
+*.zip
