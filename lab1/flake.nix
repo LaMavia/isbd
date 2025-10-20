@@ -25,6 +25,8 @@
             llvm.clang
 
             pkgs.gtest
+            pkgs.gnumake
+            pkgs.bear
           ];
 
           buildInputs = [
