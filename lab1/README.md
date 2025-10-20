@@ -7,7 +7,7 @@ make
 
 gdzie
 
-1. `block-size` - rozmiar bloku w bajtach, dodatni.
+1. `block-size` - rozmiar bloku w bajtach, dodatni, niewiększe niż 2'147'479'552, gdyż tyle maksymalnie może odczytać `read`, więc zmieniłoby to bloki w podejściu `read` vs. `mmap`.
 2. `file-path` - ścieżka do pliku.
 3. `-v` - flaga verbose, wypisuje bajty wczytanych bloków.
 
