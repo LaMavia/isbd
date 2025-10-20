@@ -103,21 +103,23 @@ int parse_args(int argc, char *argv[], size_t *bs, int *fd, bool *verbose) {
     return 1;
   }
 
-  int n_matched = sscanf(argv[1], "%zu", bs);
+  ssize_t bss;
+  int n_matched = sscanf(argv[1], "%zd", &bss);
   if (n_matched != 1) {
     fprintf(stderr, "Error: invalid buffer size, parsing failed\n");
     return 1;
   }
-
-  if (*bs == 0) {
-    fprintf(stderr, "Error: buffer size must be positive but got %d\n", *bs);
+  if (bss <= 0) {
+    fprintf(stderr, "Error: buffer size must be positive but got %d\n", bss);
     return 1;
   }
-  if (*bs > MAX_BUFFER_SIZE) {
-    fprintf(stderr, "Error: buffer size too large, %zu > %zu\n", *bs,
+  if (bss > MAX_BUFFER_SIZE) {
+    fprintf(stderr, "Error: buffer size too large, %zd > %zd\n", bss,
             MAX_BUFFER_SIZE);
     return 1;
   }
+
+  *bs = bss;
 
   *fd = open(argv[2], O_RDONLY);
   if (*fd == -1) {
