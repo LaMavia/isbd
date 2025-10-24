@@ -6,3 +6,4 @@ gen_crc64table
 main
 crc64table.h
 *.zip
+.cache

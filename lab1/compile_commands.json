@@ -1,21 +1,21 @@
 [
   {
     "arguments": [
-      "/nix/store/d6syhmcp4rldmcc9bk42zssndi4q7kwq-clang-wrapper-21.1.1/bin/clang",
+      "/nix/store/al7l1c2nwk9c9cicp3l7jfjxi1vilp93-clang-wrapper-21.1.2/bin/clang",
       "-c",
       "-std=c23",
       "-I",
-      "/nix/store/dwb0jmsc5xi6k09c5s8z4qb8yrra14l9-libcxx-21.1.1-dev/include",
+      "/nix/store/kbwgjpavw9g5kgqdnlvkdyzky4ahjc9v-libcxx-21.1.2-dev/include",
       "-I",
-      "/nix/store/cz9k6nhxjppa1kmyf5npd0g8l89xzilw-openssl-3.5.2-dev/include",
+      "/nix/store/4vm27ldxmphlgyj3vf1h7dlgvj5hvj0w-openssl-3.6.0-dev/include",
       "-I",
-      "/nix/store/d6syhmcp4rldmcc9bk42zssndi4q7kwq-clang-wrapper-21.1.1/resource-root/include",
+      "/nix/store/al7l1c2nwk9c9cicp3l7jfjxi1vilp93-clang-wrapper-21.1.2/resource-root/include",
       "-o",
-      "crc64.o",
-      "crc64.c"
+      "main.o",
+      "main.c"
     ],
     "directory": "/home/mavia/projectes/uni/isdb/lab1",
-    "file": "/home/mavia/projectes/uni/isdb/lab1/crc64.c",
-    "output": "/home/mavia/projectes/uni/isdb/lab1/crc64.o"
+    "file": "/home/mavia/projectes/uni/isdb/lab1/main.c",
+    "output": "/home/mavia/projectes/uni/isdb/lab1/main.o"
   }
 ]

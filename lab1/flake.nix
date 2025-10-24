@@ -15,8 +15,8 @@
         lib = nixpkgs.lib;
 
       in
-      rec {
-        devShell = pkgs.mkShell {
+      {
+        devShell = pkgs.mkShell rec {
           nativeBuildInputs = [
             pkgs.cmake
             llvm.lldb
@@ -39,6 +39,12 @@
             (lib.makeSearchPathOutput "dev" "include" [ llvm.libcxx pkgs.openssl ])
             (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
           ];
+
+          shellHook = ''
+            # Augment the dynamic linker path
+            export "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${CPATH}"
+            export "LIBCLANG_PATH=${pkgs.libclang.lib}/lib";
+          '';
         };
       }
     );
