@@ -46,11 +46,10 @@ let () =
   Unix.write fd (Bytes.make page_size '\000') 0 page_size |> print_int;
   flush_all ();
   let a = Unix.map_file fd Bigarray.Char Bigarray.C_layout true [| -1 |] in
-  let p =
-    { age = 505435435; name = "helloaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
-  in
-  PersonRecordSig.deserialize a p 0 |> ignore;
-  match PersonRecordSig.serialize a 0 with
+  let p = { age = 505435435; name = "Zuzanna"; surname = "Surowiec" } in
+  PersonSig.deserialize a p 0 |> ignore;
+  match PersonSig.serialize a 0 with
   | Result.Ok (p', _) ->
-      Printf.printf "\nperson { age=%d; name=%s }" p'.age p'.name
+      Printf.printf "\nperson { age=%d; name=%s; surname=%s }" p'.age p'.name
+        p'.surname
   | Result.Error e -> print_string e.reason
