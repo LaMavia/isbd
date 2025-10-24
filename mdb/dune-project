@@ -1,0 +1,30 @@
+(lang dune 3.8)
+
+(using ctypes 0.3)
+
+(name mdb)
+
+(license MIT-0)
+
+; https://dune.readthedocs.io/en/stable/opam.html#generating-opam-files
+
+(generate_opam_files)
+
+(opam_file_location inside_opam_directory)
+
+(cram enable)
+
+; https://dune.readthedocs.io/en/stable/concepts.html#package-specification
+
+(package
+ (name mdb)
+ (synopsis "Friendly greetings")
+ (depends
+  (opium
+   (>= 0.20.0))
+  (openapi
+   (>= 1.0.1))
+  (ppx_deriving_json_schema
+   (>= 1.0.0))
+  lib
+  ))

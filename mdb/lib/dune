@@ -1,0 +1,23 @@
+; More information on specifying libraries can be found in the Dune documentation:
+;
+; - https://dune.readthedocs.io/en/stable/concepts.html#libraries
+; - https://dune.readthedocs.io/en/stable/dune-files.html#library
+
+(include_subdirs qualified)
+
+(library
+ (name lib)
+ (libraries core ppxlib))
+
+;
+; (library
+;  (name ppx_deriving_json_schema)
+;  (public_name ppx_deriving_json_schema)
+;  (kind ppx_deriver)
+;  (modules ppx_deriving_json_schema)
+;  (libraries ppx_deriving ppxlib core yojson ppx_yojson_conv_lib)
+;  (preprocess
+;   (pps ppxlib.metaquot ppx_deriving.make)))
+;
+; (documentation
+;  (package hello))

@@ -1,0 +1,8 @@
+# dune files
+_build
+
+# nix files
+.direnv
+result
+.vscode
+.github
