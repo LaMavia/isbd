@@ -8,10 +8,9 @@ ocamlPackages.buildDunePackage rec {
   minimalOCamlVersion = "4.07";
   version = "1.0.0";
   src = pkgs.fetchFromGitHub {
-    owner = "jhuapl-saralab";
-    repo = "openapi-ocaml";
+    owner = "marigold-dev";
+    repo = "openapi-router";
     rev = "v${version}";
-    sha256 = "sha256-WOskB+Q2eEaW9cOBlIwFmLh1CGYLg09BY1LePVQWbno=";
   };
 
   propagatedBuildInputs = with ocamlPackages; [
