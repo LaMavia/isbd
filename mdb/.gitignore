@@ -6,3 +6,7 @@ _build
 result
 .vscode
 .github
+
+# perf
+perf.data*
+*.perf

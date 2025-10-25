@@ -37,19 +37,12 @@
 
 open Lib.Schema.Type
 
-let page_size = 16 * 1024
-
 let () =
-  Array.iter (fun x -> Printf.printf "%s\n" x) Sys.argv;
-  flush_all ();
-  let fd = Unix.openfile Sys.argv.(1) Unix.[ O_RDWR; O_APPEND ] 0o640 in
-  Unix.write fd (Bytes.make page_size '\000') 0 page_size |> print_int;
-  flush_all ();
-  let a = Unix.map_file fd Bigarray.Char Bigarray.C_layout true [| -1 |] in
+  let a = Lib.Schema.SigArray.ManagedMMap.of_path Sys.argv.(1) in
   let p = { age = 505435435; name = "Zuzanna"; surname = "Surowiec" } in
   PersonSig.deserialize a p 0 |> ignore;
   match PersonSig.serialize a 0 with
   | Result.Ok (p', _) ->
-      Printf.printf "\nperson { age=%d; name=%s; surname=%s }" p'.age p'.name
+      Printf.printf "person { age=%d; name=%s; surname=%s }" p'.age p'.name
         p'.surname
   | Result.Error e -> print_string e.reason

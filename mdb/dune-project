@@ -20,8 +20,6 @@
  (name mdb)
  (synopsis "Friendly greetings")
  (depends
-  (opium
-   (>= 0.20.0))
   (openapi
    (>= 1.0.1))
   (ppx_deriving_json_schema

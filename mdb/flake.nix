@@ -14,6 +14,7 @@
   inputs = {
     # Externally extensible flake systems. See <https://github.com/nix-systems/nix-systems>.
     systems.url = "github:nix-systems/default";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
   };
 
   outputs = { self, nixpkgs, systems }:
@@ -52,7 +53,6 @@
 
             buildInputs = with ocamlPackages; [
               # OCaml package dependencies go here.
-              opium
               ppx_deriving_yojson
               (callPackage ./packages/openapi.nix { })
             ];
@@ -170,6 +170,7 @@
       devShells = eachSystem (system:
         let
           legacyPackages = nixpkgs.legacyPackages.${system};
+          pkgs = import nixpkgs { inherit system; };
           ocamlPackages = legacyPackages.ocamlPackages;
         in
         {
