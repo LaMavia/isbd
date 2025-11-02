@@ -3,14 +3,15 @@ let
   ocamlPackages = pkgs.ocamlPackages;
 in
 ocamlPackages.buildDunePackage rec {
-  pname = "openapi";
+  pname = "openapi_router";
   name = pname;
   minimalOCamlVersion = "4.07";
-  version = "1.0.0";
+  version = "0.1.0";
   src = pkgs.fetchFromGitHub {
     owner = "marigold-dev";
     repo = "openapi-router";
-    rev = "v${version}";
+    rev = "${version}";
+    sha256 = "sha256-HZ+UW4fTOSEHTU3awpaz4bIMC+omFMPI8fM/ZTxR7Vw=";
   };
 
   propagatedBuildInputs = with ocamlPackages; [

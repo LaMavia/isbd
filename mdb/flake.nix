@@ -1,16 +1,6 @@
 {
   description = "A flake demonstrating how to build OCaml projects with Dune";
 
-  # Flake dependency specification
-  #
-  # To update all flake inputs:
-  #
-  #     $ nix flake update --commit-lock-file
-  #
-  # To update individual flake inputs:
-  #
-  #     $ nix flake lock --update-input <input> ... --commit-lock-file
-  #
   inputs = {
     # Externally extensible flake systems. See <https://github.com/nix-systems/nix-systems>.
     systems.url = "github:nix-systems/default";
@@ -37,7 +27,7 @@
           ocamlPackages = legacyPackages.ocamlPackages;
           callPackage = legacyPackages.callPackage;
         in
-        {
+        rec {
           # The package that will be built or run by default. For example:
           #
           #     $ nix build
@@ -54,7 +44,10 @@
             buildInputs = with ocamlPackages; [
               # OCaml package dependencies go here.
               ppx_deriving_yojson
-              (callPackage ./packages/openapi.nix { })
+              legacyPackages.libunwind
+              memtrace
+              unix-errno
+              # (callPackage ./packages/openapi_router.nix { })
             ];
 
             strictDeps = false;
@@ -188,6 +181,12 @@
               ocamlPackages.ocaml-lsp
               # Fancy REPL thing
               ocamlPackages.utop
+              legacyPackages.libunwind
+              ocamlPackages.memtrace
+              legacyPackages.babeltrace
+              legacyPackages.perf
+              legacyPackages.ttyplot
+              legacyPackages.unixtools.xxd
             ];
 
             # Tools from packages

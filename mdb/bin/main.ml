@@ -1,48 +1,110 @@
-(* open Opium *)
-(**)
-(* type person = { name : string; age : int } [@@deriving yojson] *)
-(**)
-(* let print_person_handler req = *)
-(*   let name = Router.param req "name" in *)
-(*   let age = Router.param req "age" |> int_of_string in *)
-(*   let person = { name; age } |> person_to_yojson in *)
-(*   Lwt.return (Response.of_json person) *)
-(**)
-(* let update_person_handler req = *)
-(*   let open Lwt.Syntax in *)
-(*   let+ json = Request.to_json_exn req in *)
-(*   let person = person_of_yojson json |> Result.get_ok in *)
-(*   Logs.info (fun m -> m "Received person: %s" person.name); *)
-(*   Response.of_json (`Assoc [ ("message", `String "Person saved") ]) *)
-(**)
-(* let streaming_handler req = *)
-(*   let length = Body.length req.Request.body in *)
-(*   let content = Body.to_stream req.Request.body in *)
-(*   let body = Lwt_stream.map String.uppercase_ascii content in *)
-(*   Response.make ~body:(Body.of_stream ?length body) () |> Lwt.return *)
-(**)
-(* let print_param_handler req = *)
-(*   Printf.sprintf "Hello, %s\n" (Router.param req "name") *)
-(*   |> Response.of_plain_text |> Lwt.return *)
-(**)
-(* let () = *)
-(*   Printf.printf "Hello\n"; *)
-(*   flush_all (); *)
-(*   App.empty *)
-(*   |> App.post "/hello/stream" streaming_handler *)
-(*   |> App.get "/hello/:name" print_param_handler *)
-(*   |> App.get "/person/:name/:age" print_person_handler *)
-(*   |> App.patch "/person" update_person_handler *)
-(*   |> App.port 8000 |> App.run_command *)
-
 open Lib.Schema.Type
+open Lib.Schema.SigArray
+
+type mode = Serialize | Deserialize
 
 let () =
-  let a = Lib.Schema.SigArray.ManagedMMap.of_path Sys.argv.(1) in
-  let p = { age = 505435435; name = "Zuzanna"; surname = "Surowiec" } in
-  PersonSig.deserialize a p 0 |> ignore;
-  match PersonSig.serialize a 0 with
-  | Result.Ok (p', _) ->
-      Printf.printf "person { age=%d; name=%s; surname=%s }" p'.age p'.name
-        p'.surname
-  | Result.Error e -> print_string e.reason
+  let usage_msg = "mdb [-s] [-d] <file> ..." in
+  let mode = ref Serialize and input_files = ref [] in
+  let anon_fun filename = input_files := filename :: !input_files in
+  let make_set_mode m = Arg.Unit (fun () -> (mode := m) |> ignore) in
+  let speclist =
+    [
+      ("-s", make_set_mode Serialize, "serialize");
+      ("-d", make_set_mode Deserialize, "deserialize");
+    ]
+  in
+  Memtrace.trace_if_requested ();
+  Arg.parse speclist anon_fun usage_msg;
+  let a = ManagedMMap.of_path (List.hd !input_files) in
+  match !mode with
+  | Serialize -> (
+      match SignedVLQSig.serialize a 0 with
+      | Result.Ok (n, offset) -> Printf.printf "n=%Ld, offset=%d\n" n offset
+      | Result.Error e ->
+          print_string e.reason
+          (* match PersonEphSeqSig.serialize a 0 with *)
+          (* | Result.Ok (ps, _) -> *)
+          (*     Seq.iteri *)
+          (*       (fun i p' -> *)
+          (*         Printf.printf "%02d. person { age=%d; name=%s; surname=%s }\n" *)
+          (*           (i + 1) p'.age p'.name p'.surname) *)
+          (*       ps *)
+          (* | Result.Error e -> print_string e.reason *))
+  | Deserialize ->
+      let n = 1002007L in
+      SignedVLQSig.deserialize a n 0 |> ignore
+(* let person_dispenser len = *)
+(*   let i = ref 0 in *)
+(*   fun () -> *)
+(*     if !i >= len then Option.None *)
+(*     else ( *)
+(*       i := !i + 1; *)
+(*       Option.Some { age = 23; name = "Zuzanna"; surname = "Surowiec" }) *)
+(* in *)
+(* PersonEphSeqSig.deserialize a *)
+(*   (Seq.of_dispenser @@ person_dispenser 50000) *)
+(*   0 *)
+(* |> ignore *)
+
+(* let () = *)
+(*   let open Openapi in *)
+(*   let id_schema = *)
+(*     Schema.(SchemaString { type_ = `String; default = Option.None }) *)
+(*   in *)
+(*   let page_public = *)
+(*     Response. *)
+(*       { *)
+(*         content = *)
+(*           MediaTypeMap.of_list *)
+(*             [ ("id", MediaType.{ schema = Schema.to_ref "id" }) ]; *)
+(*         description = "decription"; *)
+(*       } *)
+(*   in *)
+(*   to_yojson *)
+(*     { *)
+(*       openapi = "3.1"; *)
+(*       info = *)
+(*         Info. *)
+(*           { *)
+(*             title = "title"; *)
+(*             summary = "summary"; *)
+(*             description = "description"; *)
+(*             version = "1.0.0"; *)
+(*           }; *)
+(*       tags = []; *)
+(*       components = *)
+(*         Components. *)
+(*           { *)
+(*             schemas = SchemaMap.of_list [ ("id", id_schema) ]; *)
+(*             responses = ResponseMap.of_list [ ("page_public", page_public) ]; *)
+(*             requests = RequestMap.of_list []; *)
+(*           }; *)
+(*       paths = *)
+(*         StringMap.of_list *)
+(*           [ *)
+(*             ( "/page/:page_id/", *)
+(*               Path. *)
+(*                 { *)
+(*                   summary = "summary"; *)
+(*                   description = "description"; *)
+(*                   get = *)
+(*                     Option.some *)
+(*                       Operation. *)
+(*                         { *)
+(*                           description = "description"; *)
+(*                           tags = []; *)
+(*                           summary = "summary"; *)
+(*                           operationId = "get_page_by_id"; *)
+(*                           parameters = []; *)
+(*                           requestBody = Reference.{ ref_ = "" }; *)
+(*                           responses = StringMap.of_list []; *)
+(*                         }; *)
+(*                   put = Option.None; *)
+(*                   post = Option.None; *)
+(*                   delete = Option.None; *)
+(*                   patch = Option.None; *)
+(*                 } ); *)
+(*           ]; *)
+(*     } *)
+(*   |> Yojson.Safe.pretty_to_string |> Printf.printf "%s\n" *)

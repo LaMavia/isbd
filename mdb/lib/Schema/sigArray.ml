@@ -1,5 +1,5 @@
 module ManagedMMap = struct
-  let page_size = 16 * 1024
+  let page_size = 16 * 1024 * 1024
   let page_size_f = float_of_int page_size
 
   type t = {
@@ -31,8 +31,14 @@ module ManagedMMap = struct
         * (int_of_float @@ ceil
           @@ (float_of_int (offset + length - a.size) /. page_size_f))
       in
+      (* Printf.eprintf "[DEBUG] offset=%d, length=%d, extend_size=%d\n" offset *)
+      (*   length extend_size; *)
+      (* flush_all (); *)
       let len_written =
-        Unix.write a.fd (Bytes.make extend_size '\000') a.size extend_size
+        Unix.lseek a.fd 0 Unix.SEEK_END |> ignore;
+        let r = Unix.write a.fd (Bytes.make extend_size '\000') 0 extend_size in
+        (* Unix.lseek a.fd 0 Unix.SEEK_SET |> ignore; *)
+        r
       in
       a.size <- a.size + len_written;
       a.array <- map_file_descr a.fd;
