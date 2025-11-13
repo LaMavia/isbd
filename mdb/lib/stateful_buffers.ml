@@ -1,4 +1,4 @@
-type stb = { buffer : bytes; mutable position : int }
+type stb = { mutable buffer : bytes; mutable position : int }
 type t = stb array
 
 let get_buffer (bfs : t) (i : int) = bfs.(i)

@@ -21,6 +21,7 @@ interface LogicColumn {
    */
   decode_fragments(
     buffers: StatefulBuffers,
+    bi: size_t,
     fragment_lengths: size_t[],
     fragment_lengths_i: size_t,
   );
@@ -53,7 +54,7 @@ module type ColumnDeserializer = sig
 
   val physical_length : int
   val deserialize : Stateful_buffers.t -> int -> t Seq.t
-  val decode_fragments : Stateful_buffers.t -> int array -> int -> unit
+  val decode_fragments : Stateful_buffers.t -> int -> int array -> int -> unit
   val encode_fragments : Stateful_buffers.t -> int -> unit
 end
 
@@ -90,8 +91,11 @@ module Deserializers = struct
       if continue then deserialize_tail sign u (shift + 7) a
       else Int64.mul sign u
 
-    let decode_fragments _ _ _ = ()
-    let encode_fragments _ _ = ()
+    let decode_fragments bfs bi _ _ =
+      (Stateful_buffers.get_buffer bfs bi).position <- 0
+
+    let encode_fragments bfs bi =
+      (Stateful_buffers.get_buffer bfs bi).position <- 0
   end
 
   module UIntDeserializer : sig
@@ -115,8 +119,11 @@ module Deserializers = struct
       a.position <- a.position + 1;
       if continue then deserialize_aux u (shift + 7) a else Option.some u
 
-    let decode_fragments _ _ _ = ()
-    let encode_fragments _ _ = ()
+    let decode_fragments bfs bi _ _ =
+      (Stateful_buffers.get_buffer bfs bi).position <- 0
+
+    let encode_fragments bfs bi =
+      (Stateful_buffers.get_buffer bfs bi).position <- 0
   end
 
   module VarcharDeserializer : sig
@@ -129,12 +136,33 @@ module Deserializers = struct
       |> Seq.map (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
 
     and deserialize_str a len =
-      let r = Bytes.sub_string a.buffer a.position (Int64.to_int len) in
-      a.position <- a.position + 1;
+      let ilen = Int64.to_int len in
+      let r = Bytes.sub_string a.buffer a.position ilen in
+      a.position <- a.position + ilen;
       r
 
-    let decode_fragments = Utils.Undefined.undefined
-    let encode_fragments = Utils.Undefined.undefined
+    let decode_fragments bfs bi flens fi =
+      UIntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
+      let total_str_length =
+        UIntDeserializer.deserialize bfs (bi + 1)
+        |> Seq.fold_left Int64.add 0L |> Int64.to_int
+      in
+      let str_a = Stateful_buffers.get_buffer bfs bi in
+      let decompressed_strings =
+        LZ4.Bytes.decompress ~length:total_str_length
+          (Bytes.sub str_a.buffer 0 str_a.position)
+      in
+      str_a.buffer <- decompressed_strings;
+      str_a.position <- 0
+
+    let encode_fragments bfs bi =
+      let str_a = Stateful_buffers.get_buffer bfs bi in
+      let compressed_strings =
+        LZ4.Bytes.compress (Bytes.sub str_a.buffer 0 str_a.position)
+      in
+      str_a.buffer <- compressed_strings;
+      str_a.position <- 0;
+      UIntDeserializer.encode_fragments bfs (bi + 1)
   end
 end
 
