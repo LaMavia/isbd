@@ -1,25 +1,18 @@
-type offset = int
-
 module type SchemaSig = sig
   type t
+  type extra
 
-  val serialize : SigArray.t -> offset -> (t * offset, Error.t) result
-  val deserialize : SigArray.t -> t -> offset -> offset
-end
+  val serialize :
+    SigArray.arr ->
+    SigArray.offset ->
+    extra ->
+    (t * SigArray.offset, Error.t) result
 
-module CombineSig (A : SchemaSig) (B : SchemaSig) : sig
-  include SchemaSig with type t := A.t * B.t
-end = struct
-  let serialize a offset =
-    match A.serialize a offset with
-    | Result.Error e -> Result.Error e
-    | Result.Ok (av, offset') -> (
-        match B.serialize a offset' with
-        | Result.Error e -> Result.Error e
-        | Result.Ok (bv, offset'') -> Result.Ok ((av, bv), offset''))
+  val deserialize :
+    SigArray.arr -> extra -> t -> SigArray.offset -> SigArray.offset
 
-  let deserialize a (av, bv) offset =
-    A.deserialize a av offset |> B.deserialize a bv
+  val compress : bytes -> int -> bytes
+  val decompress : bytes -> int -> bytes
 end
 
 module Syntax = struct

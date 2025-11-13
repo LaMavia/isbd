@@ -1,13 +1,29 @@
+type offset = int * int
+
+type arr =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Genarray.t
+
+module OffsetSyntax = struct
+  let ( <+> ) (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
+  let ( +> ) (x, y) dy = (x, y + dy)
+  let ( <+ ) (x, y) dx = (x + dx, y)
+end
+
+module type Storage = sig
+  type t
+
+  val get : t -> int -> int -> bytes
+  val set : t -> int -> int -> bytes -> unit
+end
+
 module ManagedMMap = struct
   let page_size = 16 * 1024 * 1024
   let page_size_f = float_of_int page_size
 
-  type t = {
-    fd : Unix.file_descr;
-    mutable size : int;
-    mutable array :
-      (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Genarray.t;
-  }
+  type arr =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Genarray.t
+
+  type t = { fd : Unix.file_descr; mutable size : int; mutable array : arr }
 
   let map_file_descr fd =
     Unix.map_file fd Bigarray.Char Bigarray.C_layout true [| -1 |]
@@ -31,13 +47,9 @@ module ManagedMMap = struct
         * (int_of_float @@ ceil
           @@ (float_of_int (offset + length - a.size) /. page_size_f))
       in
-      (* Printf.eprintf "[DEBUG] offset=%d, length=%d, extend_size=%d\n" offset *)
-      (*   length extend_size; *)
-      (* flush_all (); *)
       let len_written =
         Unix.lseek a.fd 0 Unix.SEEK_END |> ignore;
         let r = Unix.write a.fd (Bytes.make extend_size '\000') 0 extend_size in
-        (* Unix.lseek a.fd 0 Unix.SEEK_SET |> ignore; *)
         r
       in
       a.size <- a.size + len_written;
@@ -48,7 +60,57 @@ module ManagedMMap = struct
         if i < length then set a.array [| offset + i |] b else ())
 end
 
-type t = ManagedMMap.t
+module MMapStorage : sig
+  include Storage with type t := ManagedMMap.t
+end = struct
+  let get = ManagedMMap.get
+  let set = ManagedMMap.set
+end
 
-let read_bytes = ManagedMMap.get
-let write_bytes = ManagedMMap.set
+(* module Make (Storage : sig *)
+(*   type t *)
+(**)
+(*   (* t -> offset -> bytees -> () *) *)
+(*   val dump_buffer : t -> int -> bytes -> int *)
+(**)
+(*   (* t -> offset -> bytes  *) *)
+(*   val load_buffer : t -> int -> bytes *)
+(* end) : sig *)
+(*   type t *)
+(**)
+(*   val make : rows:int -> columns:int -> storage:Storage.t -> t *)
+(*   val append : t -> row:int -> bytes -> unit *)
+(*   val read : t -> row:int -> len:int -> bytes *)
+(* end = struct *)
+(*   type buffer = { mutable position : int; mutable data : bytes } *)
+(**)
+(*   type t = { *)
+(*     mutable buffers : buffer array; *)
+(*     buffer_length : int; *)
+(*     storage : Storage.t; *)
+(*   } *)
+(**)
+(*   let make = Utils.Undefined.undefined *)
+(*   let append = Utils.Undefined.undefined *)
+(*   let read = Utils.Undefined.undefined *)
+(* end *)
+
+type t
+
+let read_bytes : arr -> offset -> int -> bytes =
+ fun a (x, y) length ->
+  let open Bigarray.Genarray in
+  Bytes.init length (fun i -> get a [| x; y + i |])
+
+let write_bytes : arr -> offset -> int -> bytes -> unit =
+ fun a (x, y) length ->
+  let open Bigarray.Genarray in
+  Bytes.iteri (fun i b -> if i < length then set a [| x; y + i |] b else ())
+
+(*
+  Deserializer pisze do buffera.
+  Jeśli buffer się przepełni (boundary condition check), buffer zapisuje do storage'a.
+
+  Serializer czyta z buffera.
+  Jeśli jest próba odczytania offsetu, którego nie mamy w bufferze, zdumpuj obecny buffer i wczytaj odpowiedni buffer.
+*)

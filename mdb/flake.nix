@@ -48,6 +48,7 @@
               memtrace
               unix-errno
               # (callPackage ./packages/openapi_router.nix { })
+              (callPackage ./packages/ocaml_lz4.nix { })
             ];
 
             strictDeps = false;
@@ -187,6 +188,8 @@
               legacyPackages.perf
               legacyPackages.ttyplot
               legacyPackages.unixtools.xxd
+              (legacyPackages.callPackage ./packages/ocaml_lz4.nix { })
+
             ];
 
             # Tools from packages

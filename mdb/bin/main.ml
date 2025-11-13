@@ -1,5 +1,5 @@
 open Lib.Schema.Type
-open Lib.Schema.SigArray
+(* open Lib.Schema.SigArray *)
 
 type mode = Serialize | Deserialize
 
@@ -16,24 +16,32 @@ let () =
   in
   Memtrace.trace_if_requested ();
   Arg.parse speclist anon_fun usage_msg;
-  let a = ManagedMMap.of_path (List.hd !input_files) in
-  match !mode with
-  | Serialize -> (
-      match SignedVLQSig.serialize a 0 with
-      | Result.Ok (n, offset) -> Printf.printf "n=%Ld, offset=%d\n" n offset
-      | Result.Error e ->
-          print_string e.reason
-          (* match PersonEphSeqSig.serialize a 0 with *)
-          (* | Result.Ok (ps, _) -> *)
-          (*     Seq.iteri *)
-          (*       (fun i p' -> *)
-          (*         Printf.printf "%02d. person { age=%d; name=%s; surname=%s }\n" *)
-          (*           (i + 1) p'.age p'.name p'.surname) *)
-          (*       ps *)
-          (* | Result.Error e -> print_string e.reason *))
-  | Deserialize ->
-      let n = 1002007L in
-      SignedVLQSig.deserialize a n 0 |> ignore
+  let a = Bigarray.Genarray.create Char C_layout [| 1; 1000 |]
+  and n0 = 5000000L in
+  UnsignedVLQSig.deserialize a () n0 (0, 0) |> ignore;
+  let n, off = UnsignedVLQSig.serialize a (0, 0) () |> Result.get_ok in
+  Printf.printf "%Ld \t (%d, %d)\n" n (fst off) (snd off)
+
+(* let a =  / *)
+(* let a = ManagedMMap.of_path 1 (List.hd !input_files) in *)
+(* match !mode with *)
+(* | Serialize -> ( *)
+(*     match SignedVLQSig.serialize a.array (0, 0) with *)
+(*     | Result.Ok (n, offset) -> *)
+(*         Printf.printf "n=%Ld, offset=(%d, %d)\n" n (fst offset) (snd offset) *)
+(*     | Result.Error e -> *)
+(*         print_string e.reason *)
+(*         (* match PersonEphSeqSig.serialize a 0 with *) *)
+(*         (* | Result.Ok (ps, _) -> *) *)
+(*         (*     Seq.iteri *) *)
+(*         (*       (fun i p' -> *) *)
+(*         (*         Printf.printf "%02d. person { age=%d; name=%s; surname=%s }\n" *) *)
+(*         (*           (i + 1) p'.age p'.name p'.surname) *) *)
+(*         (*       ps *) *)
+(*         (* | Result.Error e -> print_string e.reason *)) *)
+(* | Deserialize -> *)
+(*     let n = -1002007L in *)
+(*     SignedVLQSig.deserialize a.array n (0, 0) |> ignore *)
 (* let person_dispenser len = *)
 (*   let i = ref 0 in *)
 (*   fun () -> *)
