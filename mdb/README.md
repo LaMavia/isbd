@@ -1,5 +1,8 @@
 # Format
 
+Kolejność atrybutów to kolejność w formacie.
+Tablice są wyłącznie dla uproszczenia i są po prostu sklejeniem elementów jeden po drugim.
+
 ```ts
 interface MDB {
   chunks: Chunk[];

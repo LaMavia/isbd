@@ -7,6 +7,7 @@ module type CursorInterface = sig
   val write : int -> bytes -> t -> t
   val move : int -> t -> t
   val seek : int -> t -> t
+  val len : t -> int
 end
 
 module StringCursor : sig
@@ -15,6 +16,7 @@ end = struct
   type t = { mutable i : int; buffer : bytes }
 
   let create s = Result.ok { i = 0; buffer = Bytes.of_string s }
+  let len c = Bytes.length c.buffer
 
   let move di c =
     c.i <- c.i + di;

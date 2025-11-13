@@ -37,11 +37,6 @@ interface LogicColumn {
 *)
 
 module type LogicalColumn = sig
-  type t
-
-  val physical_length : int
-  val create : name:string -> t
-  val get_name : t -> string
   val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
   val serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit
   val decode_fragments : Stateful_buffers.t -> int array -> int -> unit
@@ -232,20 +227,18 @@ module Serializers = struct
   end
 end
 
-module Make =
-functor
-  (V : sig
-     include ColumnDeserializer
+module type ColDesc = sig
+  include ColumnDeserializer
 
-     val to_data : t -> Data.Types.t
-   end)
+  val to_data : t -> Data.Types.t
+end
+
+module MakeLogCol =
+functor
+  (V : ColDesc)
   ->
   struct
-    type t = { name : string }
-
     let physical_length = V.physical_length
-    let create ~name = { name }
-    let get_name c = c.name
 
     let load_mut chunk bfs frag_lengths frag_i =
       for i = 0 to physical_length do
@@ -267,3 +260,23 @@ functor
     let encode_fragments = V.encode_fragments
     let deserialize_iter bfs bi = V.deserialize bfs bi |> Seq.map V.to_data
   end
+
+module VarcharColDesc : ColDesc = struct
+  include Deserializers.VarcharDeserializer
+
+  type t = string
+
+  let to_data s = Data.Types.DataVarchar s
+end
+
+module VarcharLogCol = MakeLogCol (VarcharColDesc)
+
+module IntColDesc : ColDesc = struct
+  include Deserializers.IntDeserializer
+
+  type t = int64
+
+  let to_data i = Data.Types.DataInt i
+end
+
+module IntLogCol = MakeLogCol (IntColDesc)
