@@ -1,3 +1,18 @@
+# Włączanie
+
+Sama uzywałam nixa (wystarczy `direnv allow` lub `nix develop`), ale pewnie można włączyć używając zwykłego opama:
+
+```
+opam switch create ./ 5.3.0
+opam install dune.3.20.2
+```
+
+następnie w obydwu przypadkach
+
+```
+dune build && dune exec bin/main.exe
+```
+
 # Format
 
 Kolejność atrybutów to kolejność w formacie.
