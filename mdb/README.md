@@ -23,10 +23,12 @@ interface MDB {
   chunks: Chunk[];
   chunks_len: size_t;
   columns: Column[];
-  columns_len: size_t;
+  columns_lens: vle_uint[];
+  column_names_len: size_t;
+  column_lens_len: size_t;
 }
 
-type Column = `${vle_uint}${string}${ColumnType}`
+type Column = `${string}${ColumnType}`
 type ColumnType =
   | '\001' /* int      physical_columns = 1 */
   | '\002' /* varchar  physical_columns = 2 */

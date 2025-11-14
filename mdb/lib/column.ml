@@ -36,6 +36,15 @@ interface LogicColumn {
 }
 *)
 
+type col = ColString of string | ColInt of string
+
+let col_constr_of_type s = function
+  | '\001' -> Option.some @@ ColInt s
+  | '\002' -> Option.some @@ ColString s
+  | _ -> Option.None
+
+let byte_of_col = function ColInt _ -> '\001' | ColString _ -> '\002'
+
 module type LogicalColumn = sig
   val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
   val serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit
@@ -48,9 +57,10 @@ module type ColumnDeserializer = sig
   type t
 
   val physical_length : int
-  val deserialize : Stateful_buffers.t -> int -> t Seq.t
+  val deserialize_dispenser : Stateful_buffers.t -> int -> unit -> t option
   val decode_fragments : Stateful_buffers.t -> int -> int array -> int -> unit
   val encode_fragments : Stateful_buffers.t -> int -> unit
+  val deserialize_seq : Stateful_buffers.t -> int -> t Seq.t
 end
 
 module Deserializers = struct
@@ -59,8 +69,10 @@ module Deserializers = struct
   end = struct
     let physical_length = 1
 
-    let rec deserialize bfs bi =
-      Seq.of_dispenser (aux @@ Stateful_buffers.get_buffer bfs bi)
+    let rec deserialize_dispenser bfs bi =
+      aux @@ Stateful_buffers.get_buffer bfs bi
+
+    and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and aux a () =
       if a.position >= Bytes.length a.buffer then Option.None
@@ -98,8 +110,10 @@ module Deserializers = struct
   end = struct
     let physical_length = 1
 
-    let rec deserialize bfs bi =
-      Seq.of_dispenser (aux @@ Stateful_buffers.get_buffer bfs bi)
+    let rec deserialize_dispenser bfs bi =
+      aux @@ Stateful_buffers.get_buffer bfs bi
+
+    and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and aux a () =
       if a.position >= Bytes.length a.buffer then Option.none
@@ -126,9 +140,16 @@ module Deserializers = struct
   end = struct
     let physical_length = 2
 
-    let rec deserialize bfs bi =
-      UIntDeserializer.deserialize bfs (bi + 1)
-      |> Seq.map (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
+    let rec deserialize_dispenser bfs bi =
+      let uint_dispenser =
+        UIntDeserializer.deserialize_dispenser bfs (bi + 1)
+      in
+      fun () ->
+        Option.map
+          (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
+          (uint_dispenser ())
+
+    and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and deserialize_str a len =
       let ilen = Int64.to_int len in
@@ -139,7 +160,7 @@ module Deserializers = struct
     let decode_fragments bfs bi flens fi =
       UIntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
       let total_str_length =
-        UIntDeserializer.deserialize bfs (bi + 1)
+        UIntDeserializer.deserialize_seq bfs (bi + 1)
         |> Seq.fold_left Int64.add 0L |> Int64.to_int
       in
       let str_a = Stateful_buffers.get_buffer bfs bi in
@@ -158,6 +179,28 @@ module Deserializers = struct
       str_a.buffer <- compressed_strings;
       str_a.position <- 0;
       UIntDeserializer.encode_fragments bfs (bi + 1)
+  end
+
+  module ColumnInfoDeserializer : sig
+    include ColumnDeserializer with type t := string * col
+  end = struct
+    let physical_length = 2
+
+    let rec deserialize_dispenser bfs bi =
+      let open Utils.Mopt in
+      let vchar_dispender = VarcharDeserializer.deserialize_dispenser bfs bi in
+      fun () ->
+        let* s = vchar_dispender () in
+        let slen = String.length s - 1 in
+        let name = String.sub s 0 slen in
+        let* typ = String.get s slen |> col_constr_of_type s in
+        Option.some (name, typ)
+
+    and deserialize_seq bfs bi =
+      Seq.of_dispenser @@ deserialize_dispenser bfs bi
+
+    let decode_fragments = VarcharDeserializer.decode_fragments
+    let encode_fragments = VarcharDeserializer.encode_fragments
   end
 end
 
@@ -225,6 +268,16 @@ module Serializers = struct
 
     and serialize_str v vlen a = Bytes.blit_string v 0 a.buffer a.position vlen
   end
+
+  module ColumnInfoSerializer : sig
+    include ColumnSerializer with type t := string * col
+  end = struct
+    let physical_length = 2
+
+    let serialize (s, t) bfs bi =
+      let s' = String.cat s @@ String.make 1 @@ byte_of_col t in
+      VarcharSerializer.serialize s' bfs bi
+  end
 end
 
 module type ColDesc = sig
@@ -258,7 +311,7 @@ functor
 
     let decode_fragments = V.decode_fragments
     let encode_fragments = V.encode_fragments
-    let deserialize_iter bfs bi = V.deserialize bfs bi |> Seq.map V.to_data
+    let deserialize_iter bfs bi = V.deserialize_seq bfs bi |> Seq.map V.to_data
   end
 
 module VarcharColDesc : ColDesc = struct

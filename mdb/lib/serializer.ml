@@ -60,8 +60,6 @@ interface Chunk {
 
 *)
 
-type c = ColString of string | ColInt of string
-
 module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
   let get_columns (input_cursor : IC.t) =
     let open IC in
@@ -74,9 +72,12 @@ module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
     let col_bytes =
       input_cursor |> move (-8) |> move (-cols_len) |> read cols_len
     in
-    let pos = ref 0 in
+    let bfs = Stateful_buffers.of_list [ col_bytes ] in
+    let uint_dispenser = Column.Deserializers.UIntDeserializer.deserialize_dispenser bfs 0 in
     seek 0 input_cursor |> ignore;
     Seq.of_dispenser (fun () ->
+        let open Utils.Mopt in
+        let+ clen = uint_dispenser () in
         if !pos >= cols_len then Option.none
         else
           let clen = Bytes.get_int64_be col_bytes !pos |> Int64.to_int in
