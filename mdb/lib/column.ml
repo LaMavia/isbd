@@ -36,14 +36,14 @@ interface LogicColumn {
 }
 *)
 
-type col = ColString of string | ColInt of string
+type col = [ `ColString | `ColInt ]
 
-let col_constr_of_type s = function
-  | '\001' -> Option.some @@ ColInt s
-  | '\002' -> Option.some @@ ColString s
+let col_constr_of_type = function
+  | '\001' -> Option.some `ColInt
+  | '\002' -> Option.some `ColString
   | _ -> Option.None
 
-let byte_of_col = function ColInt _ -> '\001' | ColString _ -> '\002'
+let byte_of_col = function `ColInt -> '\001' | `ColString -> '\002'
 
 module type LogicalColumn = sig
   val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
@@ -193,7 +193,7 @@ module Deserializers = struct
         let* s = vchar_dispender () in
         let slen = String.length s - 1 in
         let name = String.sub s 0 slen in
-        let* typ = String.get s slen |> col_constr_of_type s in
+        let* typ = String.get s slen |> col_constr_of_type in
         Option.some (name, typ)
 
     and deserialize_seq bfs bi =

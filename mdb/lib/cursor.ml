@@ -8,12 +8,13 @@ module type CursorInterface = sig
   val move : int -> t -> t
   val seek : int -> t -> t
   val len : t -> int
+  val position : t -> int
 end
 
 module StringCursor : sig
   include CursorInterface with type src := string
 end = struct
-  type t = { mutable i : int; buffer : bytes }
+  type t = { mutable i : int; mutable buffer : bytes }
 
   let create s = Result.ok { i = 0; buffer = Bytes.of_string s }
   let len c = Bytes.length c.buffer
@@ -32,6 +33,11 @@ end = struct
     r
 
   let write len bs c =
+    let blen = Bytes.length c.buffer in
+    if c.i + len >= blen then
+      c.buffer <- Bytes.extend c.buffer 0 ((c.i + len - blen) * 2);
     Bytes.blit bs 0 c.buffer c.i len;
     move len c
+
+  let position c = c.i
 end

@@ -61,45 +61,59 @@ interface Chunk {
 *)
 
 module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
-  let get_columns (input_cursor : IC.t) =
+  let read_columns (input_cursor : IC.t) =
     let open IC in
-    let cols_len =
-      Bytes.get_int64_be
-        (input_cursor |> seek (len input_cursor - 8) |> read 8)
-        0
-      |> Int64.to_int
+    let offsets_len = 16 and input_len = len input_cursor in
+    let offset_bytes =
+      input_cursor |> seek (input_len - offsets_len) |> read offsets_len
     in
-    let col_bytes =
-      input_cursor |> move (-8) |> move (-cols_len) |> read cols_len
+    let cols_offset = Bytes.get_int64_be offset_bytes 0 |> Int64.to_int
+    and cols_lengths_offset =
+      Bytes.get_int64_be offset_bytes 8 |> Int64.to_int
     in
-    let bfs = Stateful_buffers.of_list [ col_bytes ] in
-    let uint_dispenser = Column.Deserializers.UIntDeserializer.deserialize_dispenser bfs 0 in
-    seek 0 input_cursor |> ignore;
-    Seq.of_dispenser (fun () ->
-        let open Utils.Mopt in
-        let+ clen = uint_dispenser () in
-        if !pos >= cols_len then Option.none
-        else
-          let clen = Bytes.get_int64_be col_bytes !pos |> Int64.to_int in
-          pos.contents <- !pos + 8;
-          let cname = Bytes.sub_string col_bytes !pos clen in
-          pos.contents <- !pos + clen;
-          let col =
-            Bytes.get col_bytes !pos |> function
-            | '\001' -> ColInt cname |> Option.some
-            | '\002' -> ColString cname |> Option.some
-            | _ -> None
-          in
-          col)
+    let cols_lens = cols_lengths_offset - cols_offset
+    and cols_lengths_lens = input_len - cols_lengths_offset - offsets_len in
+    let cols_bytes = input_cursor |> seek cols_offset |> read cols_lens in
+    let cols_lengths_bytes = input_cursor |> read cols_lengths_lens in
+    let bfs = Stateful_buffers.of_list [ cols_bytes; cols_lengths_bytes ] in
+    Column.Deserializers.ColumnInfoDeserializer.deserialize_seq bfs 0
     |> List.of_seq
 
-  let serialize (buffer_size : int) (logcols : c list) (_input_cursor : IC.t)
-      (_output_cursor : OC.t) =
+  let write_columns (logcols : (string * Column.col) list)
+      (output_cursor : OC.t) =
+    let open OC in
+    let cols_offset = output_cursor |> position |> Int64.of_int in
+    let max_total_cols_len, max_total_cols_lengths_len =
+      List.fold_right
+        (fun (s, _) (u, ul) -> (u + String.length s, ul + 9))
+        logcols (0, 0)
+    in
+    let cols_bytes = Bytes.make max_total_cols_len '\000'
+    and cols_lengths_bytes = Bytes.make max_total_cols_lengths_len '\000'
+    and offsets_bytes = Bytes.make 16 '\000' in
+    let bfs =
+      Stateful_buffers.of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ]
+    in
+    logcols
+    |> List.iter (fun logcol ->
+           Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
+    output_cursor
+    |> write (Stateful_buffers.get_buffer bfs 0).position cols_bytes
+    |> ignore;
+    let cols_lengths_offset = output_cursor |> position |> Int64.of_int in
+    Bytes.set_int64_be offsets_bytes 0 cols_offset;
+    Bytes.set_int64_be offsets_bytes 8 cols_lengths_offset;
+    output_cursor
+    |> write (Stateful_buffers.get_buffer bfs 1).position cols_lengths_bytes
+    |> ignore
+
+  let serialize (buffer_size : int) (logcols : (string * Column.col) list)
+      (_input_cursor : IC.t) (_output_cursor : OC.t) =
     let phys_lens =
       logcols
       |> List.map (function
-           | ColString _ -> Column.VarcharLogCol.physical_length
-           | ColInt _ -> Column.IntLogCol.physical_length)
+           | _, `ColString -> Column.VarcharLogCol.physical_length
+           | _, `ColInt -> Column.IntLogCol.physical_length)
     in
     let _bfs =
       let total_physcols = List.fold_right ( + ) phys_lens 0 in

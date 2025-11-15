@@ -23,9 +23,9 @@ interface MDB {
   chunks: Chunk[];
   chunks_len: size_t;
   columns: Column[];
-  columns_lens: vle_uint[];
-  column_names_len: size_t;
-  column_lens_len: size_t;
+  columns_lengths: vle_uint[];
+  columns_offset: size_t;
+  columns_lengths_offset: size_t;
 }
 
 type Column = `${string}${ColumnType}`
