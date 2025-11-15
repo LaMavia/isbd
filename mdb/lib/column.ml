@@ -266,7 +266,9 @@ module Serializers = struct
       UIntSerializer.serialize (Int64.of_int vlen) bfs (bi + 1);
       serialize_str v vlen (Stateful_buffers.get_buffer bfs bi)
 
-    and serialize_str v vlen a = Bytes.blit_string v 0 a.buffer a.position vlen
+    and serialize_str v vlen a =
+      Bytes.blit_string v 0 a.buffer a.position vlen;
+      a.position <- a.position + vlen
   end
 
   module ColumnInfoSerializer : sig

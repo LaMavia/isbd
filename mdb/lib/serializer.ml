@@ -64,9 +64,14 @@ module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
   let read_columns (input_cursor : IC.t) =
     let open IC in
     let offsets_len = 16 and input_len = len input_cursor in
+    Printf.eprintf "[read_columns] input_len=%d, offsets_len=%d, seeki=%d\n"
+      input_len offsets_len (input_len - offsets_len);
     let offset_bytes =
       input_cursor |> seek (input_len - offsets_len) |> read offsets_len
     in
+    Printf.eprintf "[read_columns] offset_bytes (%d):\n"
+      (Bytes.length offset_bytes);
+    Utils.Debugging.print_hex_bytes offset_bytes;
     let cols_offset = Bytes.get_int64_be offset_bytes 0 |> Int64.to_int
     and cols_lengths_offset =
       Bytes.get_int64_be offset_bytes 8 |> Int64.to_int
@@ -82,21 +87,29 @@ module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
   let write_columns (logcols : (string * Column.col) list)
       (output_cursor : OC.t) =
     let open OC in
+    let dummy_prefix = "Some prefix:)" in
+    output_cursor
+    |> write (String.length dummy_prefix) (Bytes.of_string dummy_prefix)
+    |> ignore;
     let cols_offset = output_cursor |> position |> Int64.of_int in
     let max_total_cols_len, max_total_cols_lengths_len =
       List.fold_right
-        (fun (s, _) (u, ul) -> (u + String.length s, ul + 9))
+        (fun (s, _) (u, ul) -> (u + String.length s + 1, ul + 9))
         logcols (0, 0)
     in
+    Printf.eprintf "MAX_COLS: %d; MAX_LENS: %d\n" max_total_cols_len
+      max_total_cols_lengths_len;
     let cols_bytes = Bytes.make max_total_cols_len '\000'
     and cols_lengths_bytes = Bytes.make max_total_cols_lengths_len '\000'
     and offsets_bytes = Bytes.make 16 '\000' in
     let bfs =
       Stateful_buffers.of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ]
     in
+    (* Serialize each column *)
     logcols
     |> List.iter (fun logcol ->
            Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
+    (* Dump column bytes *)
     output_cursor
     |> write (Stateful_buffers.get_buffer bfs 0).position cols_bytes
     |> ignore;
@@ -105,7 +118,7 @@ module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
     Bytes.set_int64_be offsets_bytes 8 cols_lengths_offset;
     output_cursor
     |> write (Stateful_buffers.get_buffer bfs 1).position cols_lengths_bytes
-    |> ignore
+    |> write 16 offsets_bytes |> ignore
 
   let serialize (buffer_size : int) (logcols : (string * Column.col) list)
       (_input_cursor : IC.t) (_output_cursor : OC.t) =

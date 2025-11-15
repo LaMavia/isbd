@@ -1,26 +1,50 @@
-open Lib.Schema.Type
+open Lib
+(* open Lib.Schema.Type *)
 (* open Lib.Schema.SigArray *)
 
-type mode = Serialize | Deserialize
+(* type mode = Serialize | Deserialize *)
 
 let () =
-  let usage_msg = "mdb [-s] [-d] <file> ..." in
-  let mode = ref Serialize and input_files = ref [] in
-  let anon_fun filename = input_files := filename :: !input_files in
-  let make_set_mode m = Arg.Unit (fun () -> (mode := m) |> ignore) in
-  let speclist =
-    [
-      ("-s", make_set_mode Serialize, "serialize");
-      ("-d", make_set_mode Deserialize, "deserialize");
-    ]
+  let module TestSerializer =
+    Serializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
   in
-  Memtrace.trace_if_requested ();
-  Arg.parse speclist anon_fun usage_msg;
-  let a = Bigarray.Genarray.create Char C_layout [| 1; 1000 |]
-  and n0 = 5000000L in
-  UnsignedVLQSig.deserialize a () n0 (0, 0) |> ignore;
-  let n, off = UnsignedVLQSig.serialize a (0, 0) () |> Result.get_ok in
-  Printf.printf "%Ld \t (%d, %d)\n" n (fst off) (snd off)
+  let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
+  TestSerializer.write_columns
+    [
+      ("hello", `ColInt);
+      ("there", `ColString);
+      ( "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        `ColInt );
+    ]
+    output_cursor;
+  let bts = output_cursor |> Cursor.StringCursor.to_bytes in
+
+  Printf.eprintf "output_len: %d:\n" (Bytes.length bts);
+  Bytes.iter (fun c -> c |> Char.code |> Printf.eprintf "%d ") bts;
+  Printf.eprintf "\n";
+  flush_all ();
+  output_cursor |> Cursor.StringCursor.seek 0 |> ignore;
+  TestSerializer.read_columns output_cursor
+  |> List.iter (fun (s, t) ->
+         Printf.eprintf "%s\t%s\n" s
+           (match t with `ColInt -> "INT" | `ColString -> "VCHAR"))
+(* let usage_msg = "mdb [-s] [-d] <file> ..." in *)
+(* let mode = ref Serialize and input_files = ref [] in *)
+(* let anon_fun filename = input_files := filename :: !input_files in *)
+(* let make_set_mode m = Arg.Unit (fun () -> (mode := m) |> ignore) in *)
+(* let speclist = *)
+(*   [ *)
+(*     ("-s", make_set_mode Serialize, "serialize"); *)
+(*     ("-d", make_set_mode Deserialize, "deserialize"); *)
+(*   ] *)
+(* in *)
+(* Memtrace.trace_if_requested (); *)
+(* Arg.parse speclist anon_fun usage_msg; *)
+(* let a = Bigarray.Genarray.create Char C_layout [| 1; 1000 |] *)
+(* and n0 = 5000000L in *)
+(* UnsignedVLQSig.deserialize a () n0 (0, 0) |> ignore; *)
+(* let n, off = UnsignedVLQSig.serialize a (0, 0) () |> Result.get_ok in *)
+(* Printf.printf "%Ld \t (%d, %d)\n" n (fst off) (snd off) *)
 
 (* let a =  / *)
 (* let a = ManagedMMap.of_path 1 (List.hd !input_files) in *)
