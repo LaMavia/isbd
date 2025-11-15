@@ -84,7 +84,6 @@ module Deserializers = struct
       and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
       and rest = Int.logand octet 0b00111111 in
       let u = rest |> Int64.of_int in
-      Printf.eprintf "octet=%du | continue=%B | sign=%Ld\n" octet continue sign;
       a.position <- a.position + 1;
       if continue then deserialize_tail sign u 6 a else Int64.mul sign u
 
@@ -93,7 +92,6 @@ module Deserializers = struct
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      Printf.eprintf "octet=%du | shift=%d | continue=%B\n" octet shift continue;
       a.position <- a.position + 1;
       if continue then deserialize_tail sign u (shift + 7) a
       else Int64.mul sign u
@@ -124,15 +122,11 @@ module Deserializers = struct
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      Printf.eprintf "octet=%du | shift=%d | continue=%B\n" octet shift continue;
       a.position <- a.position + 1;
       if continue then deserialize_aux u (shift + 7) a else Option.some u
 
-    let decode_fragments bfs bi _ _ =
-      (Stateful_buffers.get_buffer bfs bi).position <- 0
-
-    let encode_fragments bfs bi =
-      (Stateful_buffers.get_buffer bfs bi).position <- 0
+    let decode_fragments _ _ _ _ = ()
+    let encode_fragments _ _ = ()
   end
 
   module VarcharDeserializer : sig
@@ -166,10 +160,10 @@ module Deserializers = struct
       let str_a = Stateful_buffers.get_buffer bfs bi in
       let decompressed_strings =
         LZ4.Bytes.decompress ~length:total_str_length
-          (Bytes.sub str_a.buffer 0 str_a.position)
+          (Bytes.sub str_a.buffer 0 flens.(fi))
       in
       str_a.buffer <- decompressed_strings;
-      str_a.position <- 0
+      str_a.position <- Bytes.length decompressed_strings
 
     let encode_fragments bfs bi =
       let str_a = Stateful_buffers.get_buffer bfs bi in
@@ -177,7 +171,7 @@ module Deserializers = struct
         LZ4.Bytes.compress (Bytes.sub str_a.buffer 0 str_a.position)
       in
       str_a.buffer <- compressed_strings;
-      str_a.position <- 0;
+      str_a.position <- Bytes.length compressed_strings;
       UIntDeserializer.encode_fragments bfs (bi + 1)
   end
 

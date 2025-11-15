@@ -5,6 +5,38 @@ open Lib
 (* type mode = Serialize | Deserialize *)
 
 let () =
+  (* let s = "Lorem ipsum dolor sit amet\001\002" in *)
+  (* let bs = *)
+  (*   [ *)
+  (*     0xdf; *)
+  (*     0x68; *)
+  (*     0x65; *)
+  (*     0x6c; *)
+  (*     0x6c; *)
+  (*     0x6f; *)
+  (*     0x01; *)
+  (*     0x74; *)
+  (*     0x68; *)
+  (*     0x65; *)
+  (*     0x72; *)
+  (*     0x65; *)
+  (*     0x02; *)
+  (*     0x41; *)
+  (*     0x01; *)
+  (*     0x00; *)
+  (*     0x2b; *)
+  (*     0x50; *)
+  (*     0x41; *)
+  (*     0x41; *)
+  (*     0x41; *)
+  (*     0x41; *)
+  (*     0x01; *)
+  (*   ] *)
+  (*   |> List.map Char.chr |> List.to_seq |> Bytes.of_seq *)
+  (*   |> LZ4.Bytes.decompress ~length:80 *)
+  (* in *)
+  (* Printf.eprintf "TEXT: %s\n" (Bytes.to_string bs); *)
+  (* Utils.Debugging.print_hex_bytes "BYTES" bs *)
   let module TestSerializer =
     Serializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
   in
@@ -19,10 +51,9 @@ let () =
     output_cursor;
   let bts = output_cursor |> Cursor.StringCursor.to_bytes in
 
-  Printf.eprintf "output_len: %d:\n" (Bytes.length bts);
-  Bytes.iter (fun c -> c |> Char.code |> Printf.eprintf "%d ") bts;
-  Printf.eprintf "\n";
+  Utils.Debugging.print_hex_bytes "OUTPUT" bts;
   flush_all ();
+  Printf.eprintf "\n=========================================\n\n";
   output_cursor |> Cursor.StringCursor.seek 0 |> ignore;
   TestSerializer.read_columns output_cursor
   |> List.iter (fun (s, t) ->

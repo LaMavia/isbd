@@ -22,24 +22,19 @@ module StringCursor = struct
   let len c = c.length
 
   let move di c =
-    Printf.eprintf "[StringCursor::move] di=%d, pos=%d\n" di c.i;
     c.i <- c.i + di;
     c
 
   let seek i c =
-    Printf.eprintf "[StringCursor::seek] i=%d, pos=%d\n" i c.i;
     c.i <- i;
     c
 
   let read len c =
-    Printf.eprintf "[StringCursor::read] len=%d, pos=%d\n" len c.i;
     let r = Bytes.sub c.buffer c.i len in
     move len c |> ignore;
     r
 
   let write len bs c =
-    Printf.eprintf "[StringCursor::write] len=%d, bytes=%s, pos=%d\n" len
-      (Bytes.to_string bs) c.i;
     let blen = Bytes.length c.buffer in
     (if c.i + len >= blen then
        let added_len = c.i + len - blen in
