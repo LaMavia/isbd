@@ -1,52 +1,19 @@
 open Lib
-(* open Lib.Schema.Type *)
-(* open Lib.Schema.SigArray *)
-
-(* type mode = Serialize | Deserialize *)
 
 let () =
-  (* let s = "Lorem ipsum dolor sit amet\001\002" in *)
-  (* let bs = *)
-  (*   [ *)
-  (*     0xdf; *)
-  (*     0x68; *)
-  (*     0x65; *)
-  (*     0x6c; *)
-  (*     0x6c; *)
-  (*     0x6f; *)
-  (*     0x01; *)
-  (*     0x74; *)
-  (*     0x68; *)
-  (*     0x65; *)
-  (*     0x72; *)
-  (*     0x65; *)
-  (*     0x02; *)
-  (*     0x41; *)
-  (*     0x01; *)
-  (*     0x00; *)
-  (*     0x2b; *)
-  (*     0x50; *)
-  (*     0x41; *)
-  (*     0x41; *)
-  (*     0x41; *)
-  (*     0x41; *)
-  (*     0x01; *)
-  (*   ] *)
-  (*   |> List.map Char.chr |> List.to_seq |> Bytes.of_seq *)
-  (*   |> LZ4.Bytes.decompress ~length:80 *)
-  (* in *)
-  (* Printf.eprintf "TEXT: %s\n" (Bytes.to_string bs); *)
-  (* Utils.Debugging.print_hex_bytes "BYTES" bs *)
   let module TestSerializer =
     Serializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
+  in
+  let module TestDeserializer =
+    Deserializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
   in
   let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
   TestSerializer.write_columns
     [
       ("hello", `ColInt);
       ("there", `ColString);
-      ( "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        `ColInt );
+      ("my", `ColInt);
+      ("friend", `ColString);
     ]
     output_cursor;
   let bts = output_cursor |> Cursor.StringCursor.to_bytes in
@@ -55,10 +22,11 @@ let () =
   flush_all ();
   Printf.eprintf "\n=========================================\n\n";
   output_cursor |> Cursor.StringCursor.seek 0 |> ignore;
-  TestSerializer.read_columns output_cursor
+  TestDeserializer.read_columns output_cursor
   |> List.iter (fun (s, t) ->
          Printf.eprintf "%s\t%s\n" s
            (match t with `ColInt -> "INT" | `ColString -> "VCHAR"))
+
 (* let usage_msg = "mdb [-s] [-d] <file> ..." in *)
 (* let mode = ref Serialize and input_files = ref [] in *)
 (* let anon_fun filename = input_files := filename :: !input_files in *)

@@ -1,4 +1,4 @@
-type t = { data : bytes; mutable pos : int }
+type t = { data : Stateful_buffers.big_bytes; mutable pos : int }
 type chunk_stream = t Seq.t
 
 module Make (C : Cursor.CursorInterface) = struct

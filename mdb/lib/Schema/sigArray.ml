@@ -1,7 +1,7 @@
-type offset = int * int
+type offset = int
 
 type arr =
-  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Genarray.t
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 module OffsetSyntax = struct
   let ( <+> ) (x1, y1) (x2, y2) = (x1 + x2, y1 + y2)
@@ -98,14 +98,14 @@ end
 type t
 
 let read_bytes : arr -> offset -> int -> bytes =
- fun a (x, y) length ->
-  let open Bigarray.Genarray in
-  Bytes.init length (fun i -> get a [| x; y + i |])
+ fun a i0 length ->
+  let open Bigarray.Array1 in
+  Bytes.init length (fun i -> get a (i0 + i))
 
 let write_bytes : arr -> offset -> int -> bytes -> unit =
- fun a (x, y) length ->
-  let open Bigarray.Genarray in
-  Bytes.iteri (fun i b -> if i < length then set a [| x; y + i |] b else ())
+ fun a i0 length ->
+  let open Bigarray.Array1 in
+  Bytes.iteri (fun i b -> if i < length then set a (i0 + i) b else ())
 
 (*
   Deserializer pisze do buffera.

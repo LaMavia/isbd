@@ -36,6 +36,8 @@ interface LogicColumn {
 }
 *)
 
+open Bigarray
+
 type col = [ `ColString | `ColInt ]
 
 let col_constr_of_type = function
@@ -75,11 +77,13 @@ module Deserializers = struct
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and aux a () =
-      if a.position >= Bytes.length a.buffer then Option.None
+      if a.position >= a.length then Option.None
       else deserialize_head a |> Option.some
 
     and deserialize_head a =
-      let octet = Bytes.get_uint8 a.buffer a.position in
+      let octet =
+        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
+      in
       let continue = octet >= 0b10000000
       and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
       and rest = Int.logand octet 0b00111111 in
@@ -88,7 +92,9 @@ module Deserializers = struct
       if continue then deserialize_tail sign u 6 a else Int64.mul sign u
 
     and deserialize_tail sign u shift a =
-      let octet = Bytes.get_uint8 a.buffer a.position in
+      let octet =
+        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
+      in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
@@ -114,11 +120,12 @@ module Deserializers = struct
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and aux a () =
-      if a.position >= Bytes.length a.buffer then Option.none
-      else deserialize_aux 0L 0 a
+      if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
 
     and deserialize_aux u shift a =
-      let octet = Bytes.get_uint8 a.buffer a.position in
+      let octet =
+        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
+      in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
@@ -147,9 +154,9 @@ module Deserializers = struct
 
     and deserialize_str a len =
       let ilen = Int64.to_int len in
-      let r = Bytes.sub_string a.buffer a.position ilen in
+      let r = Stateful_buffers.read_bytes a.buffer a.position ilen in
       a.position <- a.position + ilen;
-      r
+      r |> String.of_bytes
 
     let decode_fragments bfs bi flens fi =
       UIntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
@@ -159,19 +166,19 @@ module Deserializers = struct
       in
       let str_a = Stateful_buffers.get_buffer bfs bi in
       let decompressed_strings =
-        LZ4.Bytes.decompress ~length:total_str_length
-          (Bytes.sub str_a.buffer 0 flens.(fi))
+        LZ4.Bigbytes.decompress ~length:total_str_length
+          (Array1.sub str_a.buffer 0 flens.(fi))
       in
       str_a.buffer <- decompressed_strings;
-      str_a.position <- Bytes.length decompressed_strings
+      str_a.position <- Array1.dim decompressed_strings
 
     let encode_fragments bfs bi =
       let str_a = Stateful_buffers.get_buffer bfs bi in
       let compressed_strings =
-        LZ4.Bytes.compress (Bytes.sub str_a.buffer 0 str_a.position)
+        LZ4.Bigbytes.compress (Array1.sub str_a.buffer 0 str_a.position)
       in
       str_a.buffer <- compressed_strings;
-      str_a.position <- Bytes.length compressed_strings;
+      str_a.position <- Array1.dim compressed_strings;
       UIntDeserializer.encode_fragments bfs (bi + 1)
   end
 
@@ -218,18 +225,23 @@ module Serializers = struct
       let continue_mask = if v > 63L then 0b10000000 else 0b0 (*2^6 - 1*)
       and sign_mask = if is_neg then 0b01000000 else 0b0
       and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
-      Bytes.set_uint8 a.buffer a.position
+      let bts = Bytes.make 1 '\000' in
+      Bytes.set_uint8 bts 0
         Int.(continue_mask |> logor sign_mask |> logor octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then serialize_tail a (Int64.shift_right_logical v 6)
+      if continue_mask > 0 then
+        serialize_tail a (Int64.shift_right_logical v 6) bts
       else ()
 
-    and serialize_tail a v =
+    and serialize_tail a v bts =
       let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
       and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
-      Bytes.set_uint8 a.buffer a.position Int.(logor continue_mask octet_val);
+      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then serialize_tail a (Int64.shift_right_logical v 7)
+      if continue_mask > 0 then
+        serialize_tail a (Int64.shift_right_logical v 7) bts
       else ()
   end
 
@@ -239,14 +251,17 @@ module Serializers = struct
     let physical_length = 1
 
     let rec serialize v bfs bi =
-      serialize_aux (Stateful_buffers.get_buffer bfs bi) v
+      let bts = Bytes.make 1 '\000' in
+      serialize_aux (Stateful_buffers.get_buffer bfs bi) v bts
 
-    and serialize_aux a v =
+    and serialize_aux a v bts =
       let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
       and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
-      Bytes.set_uint8 a.buffer a.position Int.(logor continue_mask octet_val);
+      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then serialize_aux a (Int64.shift_right_logical v 7)
+      if continue_mask > 0 then
+        serialize_aux a (Int64.shift_right_logical v 7) bts
       else ()
   end
 
@@ -261,8 +276,10 @@ module Serializers = struct
       serialize_str v vlen (Stateful_buffers.get_buffer bfs bi)
 
     and serialize_str v vlen a =
-      Bytes.blit_string v 0 a.buffer a.position vlen;
+      String.iteri (fun i c -> Array1.set a.buffer (a.position + i) c) v;
       a.position <- a.position + vlen
+    (* Printf.eprintf "[serialize_str] after: %s;" v; *)
+    (* Utils.Debugging.print_hex_bytes "BUFFER" a.buffer *)
   end
 
   module ColumnInfoSerializer : sig
@@ -292,11 +309,9 @@ functor
     let load_mut chunk bfs frag_lengths frag_i =
       for i = 0 to physical_length do
         let buffer = Stateful_buffers.get_buffer bfs (frag_i + i) in
-        Bytes.blit
-          Chunk.(chunk.data)
-          Chunk.(chunk.pos)
-          buffer.buffer buffer.position
-          frag_lengths.(frag_i + i)
+        let len = frag_lengths.(frag_i + i) in
+        Array1.(
+          blit (sub Chunk.(chunk.data) Chunk.(chunk.pos) len) buffer.buffer)
       done
 
     let serialize_mut d bfs bi =
