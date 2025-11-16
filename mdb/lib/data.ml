@@ -1,32 +1,18 @@
 module Types = struct
-  type t = DataInt of int64 | DataVarchar of string
-  type data_stream = t Seq.t
+  type _ t = DataInt : int64 -> int64 t | DataVarchar : string -> string t
 
-  let to_type_str = function DataInt _ -> "int64" | DataVarchar _ -> "varchar"
+  let to_type_str : type a. a t -> string = function
+    | DataInt _ -> "int64"
+    | DataVarchar _ -> "varchar"
 
-  type 'a getter = t -> ('a, string) result
+  type 'a getter = 'a t -> ('a, string) result
 
   let make_casting_error t d =
     Result.error
     @@ Printf.sprintf "Expected %s but got %s instead" t (to_type_str d)
 
-  let get_int64 : int64 getter = function
-    | DataInt i -> Result.ok i
-    | d -> make_casting_error "int64" d
-
-  let get_varchar : string getter = function
-    | DataVarchar s -> Result.ok s
-    | d -> make_casting_error "varchar" d
+  let get_int64 : int64 getter = function DataInt i -> Result.ok i
+  let get_varchar : string getter = function DataVarchar s -> Result.ok s
 end
 
-type data_record = (string * Types.t) list
-
-module type Record = sig
-  type t
-
-  val serialize : t -> (data_record, string) result
-  val deserialize : data_record -> (t, string) result
-end
-
-let get_column (k : string) (r : data_record) = List.assoc_opt k r
-let set_column (k : string) (v : Types.t) (r : data_record) = (k, v) :: r
+type 'a data_record = (string * 'a Types.t) list

@@ -48,11 +48,13 @@ let col_constr_of_type = function
 let byte_of_col = function `ColInt -> '\001' | `ColString -> '\002'
 
 module type LogicalColumn = sig
+  type t
+
   val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
-  val serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit
+  val serialize_mut : t Data.Types.t -> Stateful_buffers.t -> int -> unit
   val decode_fragments : Stateful_buffers.t -> int array -> int -> unit
   val encode_fragments : Stateful_buffers.t -> int -> unit
-  val deserialize_iter : Stateful_buffers.t -> Data.Types.t Seq.t
+  val deserialize_iter : Stateful_buffers.t -> t Data.Types.t Seq.t
 end
 
 module type ColumnDeserializer = sig
@@ -296,7 +298,7 @@ end
 module type ColDesc = sig
   include ColumnDeserializer
 
-  val to_data : t -> Data.Types.t
+  val to_data : t -> t Data.Types.t
 end
 
 module MakeLogCol =
@@ -314,7 +316,9 @@ functor
           blit (sub Chunk.(chunk.data) Chunk.(chunk.pos) len) buffer.buffer)
       done
 
-    let serialize_mut d bfs bi =
+    let serialize_mut : type a.
+        a Data.Types.t -> Stateful_buffers.t -> int -> unit =
+     fun d bfs bi ->
       let open Data.Types in
       match d with
       | DataInt i -> Serializers.IntSerializer.serialize i bfs bi
