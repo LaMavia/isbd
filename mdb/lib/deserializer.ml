@@ -1,4 +1,4 @@
-module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
+module Make (IC : Cursor.CursorInterface) = struct
   let read_columns (input_cursor : IC.t) =
     let open IC in
     let offsets_len = 16 and input_len = len input_cursor in

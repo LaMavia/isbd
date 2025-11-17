@@ -5,14 +5,12 @@ module Types = struct
     | DataInt _ -> "int64"
     | DataVarchar _ -> "varchar"
 
-  type 'a getter = 'a t -> ('a, string) result
+  type 'a getter = 'a t -> 'a
 
   let make_casting_error t d =
     Result.error
     @@ Printf.sprintf "Expected %s but got %s instead" t (to_type_str d)
 
-  let get_int64 : int64 getter = function DataInt i -> Result.ok i
-  let get_varchar : string getter = function DataVarchar s -> Result.ok s
+  let get_int64 : int64 getter = function DataInt i -> i
+  let get_varchar : string getter = function DataVarchar s -> s
 end
-
-type 'a data_record = (string * 'a Types.t) list

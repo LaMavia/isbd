@@ -1,12 +1,8 @@
 open Lib
 
 let () =
-  let module TestSerializer =
-    Serializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
-  in
-  let module TestDeserializer =
-    Deserializer.Make (Cursor.StringCursor) (Cursor.StringCursor)
-  in
+  let module TestSerializer = Serializer.Make (Cursor.StringCursor) in
+  let module TestDeserializer = Deserializer.Make (Cursor.StringCursor) in
   let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
   TestSerializer.write_columns
     [

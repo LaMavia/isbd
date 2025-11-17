@@ -60,7 +60,7 @@ interface Chunk {
 
 *)
 
-module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
+module Make (OC : Cursor.CursorInterface) = struct
   let write_columns (logcols : (string * Column.col) list)
       (output_cursor : OC.t) =
     let open OC in
@@ -97,7 +97,7 @@ module Make (IC : Cursor.CursorInterface) (OC : Cursor.CursorInterface) = struct
     |> write 16 offsets_bytes |> ignore
 
   let serialize (buffer_size : int) (logcols : (string * Column.col) list)
-      (_input_cursor : IC.t) (_output_cursor : OC.t) =
+      (_output_cursor : OC.t) =
     let phys_lens =
       logcols
       |> List.map (function
