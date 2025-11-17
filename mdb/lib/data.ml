@@ -1,16 +1,20 @@
 module Types = struct
-  type _ t = DataInt : int64 -> int64 t | DataVarchar : string -> string t
+  type t = DataInt of int64 | DataVarchar of string
+  type data_stream = t Seq.t
 
-  let to_type_str : type a. a t -> string = function
-    | DataInt _ -> "int64"
-    | DataVarchar _ -> "varchar"
+  let to_type_str = function DataInt _ -> "int64" | DataVarchar _ -> "varchar"
 
-  type 'a getter = 'a t -> 'a
+  type 'a getter = t -> ('a, string) result
 
   let make_casting_error t d =
     Result.error
     @@ Printf.sprintf "Expected %s but got %s instead" t (to_type_str d)
 
-  let get_int64 : int64 getter = function DataInt i -> i
-  let get_varchar : string getter = function DataVarchar s -> s
+  let get_int64 : int64 getter = function
+    | DataInt i -> Result.ok i
+    | d -> make_casting_error "int64" d
+
+  let get_varchar : string getter = function
+    | DataVarchar s -> Result.ok s
+    | d -> make_casting_error "varchar" d
 end
