@@ -23,5 +23,5 @@ module Make (IC : Cursor.CursorInterface) = struct
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
     Column.Deserializers.ColumnInfoDeserializer.deserialize_seq bfs 0
-    |> List.of_seq
+    |> Array.of_seq
 end

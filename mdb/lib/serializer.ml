@@ -1,75 +1,16 @@
-(*
-function serialize(
-  logic_columns: LogicColumn[],
-  source_stream: Stream<Data>,
-  dist_stream: Stream<Chunk>,
-) {
-  /* as many as physical columns in logic_columns */
-  allocate_buffers(logic_columns, buffers);
-  const physical_lengths = logic_columns.map(
-    (logcol) => logcol.physical_length,
-  );
-
-  for (const record of source_stream) {
-    let buffer_i = 0;
-
-    for (const [i, cell] of enumerate(record.columns)) {
-      const logcol = logic_columns[i];
-
-      logcol.serialize_mut(cell, buffers, buffer_i);
-      buffer_i += physical_lengths[i];
-    }
-
-    if (should_dump_buffers(buffers)) {
-      encode_fragments(logic_columns, buffers);
-      emit_chunk(buffers, dist_stream);
-      clear_buffers(buffers);
-    }
-  }
-
-  if (!are_buffers_empty(buffers)) {
-    encode_fragments(logic_columns, buffers);
-    emit_chunk(buffers, dist_stream);
-  }
-
-  emit_footer(dist_stream);
-
-  free_buffers(buffers);
-}
-
-
-interface MDB {
-  chunks: Chunk[];
-  chunks_len: size_t;
-  columns: Column[];
-  columns_len: size_t;
-}
-
-type Column = `${i64}${string}${ColumnType}`
-type ColumnType =
-  | '\001' /* int      physical_columns = 1 */
-  | '\002' /* varchar  physical_columns = 2 */
-type vle_uint = /*  */;
-
-interface Chunk {
-  fragment_lengths: vle_uint[]; /* len(fragment_lengths) =
-                                    sum(physical_columns(typeof(c)) for c in MDB.columns)
-                                  */
-  fragments: byte[];
-}
-
-*)
-
 module Make (OC : Cursor.CursorInterface) = struct
-  let write_columns (logcols : (string * Column.col) list)
+  module OutChunk = Chunk.Make (OC)
+
+  let write_columns (logcols : (string * Column.col) array)
       (output_cursor : OC.t) =
     let open OC in
     let cols_offset = output_cursor |> position |> Int64.of_int in
-    let max_total_cols_len, max_total_cols_lengths_len =
-      List.fold_right
+    let max_total_cols_len_approx, max_total_cols_lengths_len =
+      Array.fold_right
         (fun (s, _) (u, ul) -> (u + String.length s + 1, ul + 9))
         logcols (0, 0)
     in
+    let max_total_cols_len = LZ4.compress_bound max_total_cols_len_approx in
     let cols_bytes = Stateful_buffers.create_bytes max_total_cols_len
     and cols_lengths_bytes =
       Stateful_buffers.create_bytes max_total_cols_lengths_len
@@ -79,7 +20,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     in
     (* Serialize each column *)
     logcols
-    |> List.iter (fun logcol ->
+    |> Array.iter (fun logcol ->
            Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
     Column.Deserializers.ColumnInfoDeserializer.encode_fragments bfs 0;
     let cols_bf = Stateful_buffers.get_buffer bfs 0 in
@@ -96,17 +37,89 @@ module Make (OC : Cursor.CursorInterface) = struct
     |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes |> ignore
 
-  let serialize (buffer_size : int) (logcols : (string * Column.col) list)
-      (_output_cursor : OC.t) =
+  let serialize (buffer_size_suggestion : int)
+      (logcols : (string * Column.col) array)
+      (record_stream : Data.data_record Seq.t) (output_cursor : OC.t) =
+    let buffer_size = LZ4.compress_bound buffer_size_suggestion in
     let phys_lens =
       logcols
-      |> List.map (function
+      |> Array.map (function
            | _, `ColString -> Column.VarcharLogCol.physical_length
            | _, `ColInt -> Column.IntLogCol.physical_length)
+    and serializers =
+      logcols
+      |> Array.map (function
+           | _, `ColInt -> Column.IntLogCol.serialize_mut
+           | _, `ColString -> Column.VarcharLogCol.serialize_mut)
+    and encoders =
+      logcols
+      |> Array.map (function
+           | _, `ColInt -> Column.IntLogCol.encode_fragments
+           | _, `ColString -> Column.VarcharLogCol.encode_fragments)
     in
-    let _bfs =
-      let total_physcols = List.fold_right ( + ) phys_lens 0 in
-      Stateful_buffers.create ~n:total_physcols ~len:buffer_size
+    let total_physcols = Array.fold_right ( + ) phys_lens 0 in
+    let record_bfs =
+      Stateful_buffers.create ~n:total_physcols ~len:buffer_size_suggestion
+        ~actual_length:buffer_size
+    and chunk_bfs =
+      Stateful_buffers.create ~n:total_physcols ~len:buffer_size_suggestion
+        ~actual_length:buffer_size
     in
-    ()
+    let n_chunks = ref 0L in
+    let n_chunks_bfs = Stateful_buffers.create ~n:1 ~len:9 ~actual_length:9 in
+    let rec can_append_record_to_chunk () =
+      Array.for_all2
+        Stateful_buffers.(
+          fun b ch_b -> b.position < ch_b.length - ch_b.position)
+        record_bfs chunk_bfs
+    and append_record_to_chunk () =
+      if not (can_append_record_to_chunk ()) then (
+        encode_fragments ();
+        dump_buffers ());
+      Stateful_buffers.blit record_bfs chunk_bfs;
+      Stateful_buffers.empty record_bfs
+    and dump_buffers () =
+      let open Stateful_buffers in
+      let lengths_bfs =
+        Stateful_buffers.create ~n:(Array.length chunk_bfs) ~len:9
+          ~actual_length:9
+      in
+      Array.fold_left
+        (fun i b ->
+          Column.Serializers.UIntSerializer.serialize (Int64.of_int b.position)
+            lengths_bfs i;
+          i + 1)
+        0 chunk_bfs
+      |> ignore;
+      let lengths_a = get_buffer lengths_bfs 0 in
+      OC.write lengths_a.position lengths_a.buffer output_cursor |> ignore;
+      Array.iter
+        (fun b -> OC.write b.position b.buffer output_cursor |> ignore)
+        chunk_bfs;
+      Stateful_buffers.empty chunk_bfs;
+      n_chunks := Int64.add !n_chunks 1L
+    and encode_fragments () =
+      let encode_column ((i, fi) : int * int) encoder =
+        encoder chunk_bfs fi;
+        (i + 1, fi + phys_lens.(i))
+      in
+      Array.fold_left encode_column (0, 0) encoders |> ignore
+    in
+
+    let process_record (r : Data.data_record) =
+      let process_column ((i, bi) : int * int) (v : Data.Types.t) =
+        serializers.(i) v record_bfs bi;
+        (i + 1, bi + phys_lens.(i))
+      in
+      Array.fold_left process_column (0, 0) r |> ignore;
+      append_record_to_chunk ()
+    in
+
+    Seq.iter process_record record_stream;
+    if not (Stateful_buffers.are_empty chunk_bfs) then (
+      encode_fragments ();
+      dump_buffers ());
+    let n_chunks_a = Stateful_buffers.get_buffer n_chunks_bfs 0 in
+    Column.Serializers.UIntSerializer.serialize !n_chunks n_chunks_bfs 0;
+    OC.write n_chunks_a.position n_chunks_a.buffer output_cursor |> ignore
 end

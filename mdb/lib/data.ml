@@ -18,3 +18,5 @@ module Types = struct
     | DataVarchar s -> Result.ok s
     | d -> make_casting_error "varchar" d
 end
+
+type data_record = Types.t array

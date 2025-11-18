@@ -171,16 +171,19 @@ module Deserializers = struct
         LZ4.Bigbytes.decompress ~length:total_str_length
           (Array1.sub str_a.buffer 0 flens.(fi))
       in
-      str_a.buffer <- decompressed_strings;
-      str_a.position <- Array1.dim decompressed_strings
+      let len = Array1.dim decompressed_strings in
+      Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
+      str_a.position <- len
 
     let encode_fragments bfs bi =
+      let open Array1 in
       let str_a = Stateful_buffers.get_buffer bfs bi in
       let compressed_strings =
-        LZ4.Bigbytes.compress (Array1.sub str_a.buffer 0 str_a.position)
+        LZ4.Bigbytes.compress (sub str_a.buffer 0 str_a.position)
       in
-      str_a.buffer <- compressed_strings;
-      str_a.position <- Array1.dim compressed_strings;
+      let len = dim compressed_strings in
+      blit compressed_strings (sub str_a.buffer 0 len);
+      str_a.position <- len;
       UIntDeserializer.encode_fragments bfs (bi + 1)
   end
 
@@ -312,8 +315,8 @@ functor
       for i = 0 to physical_length do
         let buffer = Stateful_buffers.get_buffer bfs (frag_i + i) in
         let len = frag_lengths.(frag_i + i) in
-        Array1.(
-          blit (sub Chunk.(chunk.data) Chunk.(chunk.pos) len) buffer.buffer)
+        Array1.(blit Chunk.(sub chunk.data chunk.pos len) buffer.buffer);
+        Chunk.(chunk.pos <- chunk.pos + len)
       done
 
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =

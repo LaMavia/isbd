@@ -42,8 +42,13 @@ let set_int64_be =
     done
 
 let get_buffer (bfs : t) (i : int) = bfs.(i)
-let create ~n ~len = Array.(make n () |> map (fun () -> Buffer.create len))
 let create_bytes len = Array1.create Char c_layout len
+
+let create_stb len actual_len =
+  { buffer = create_bytes actual_len; position = 0; length = len }
+
+let create ~n ~len ~actual_length =
+  Array.init n (fun _ -> create_stb len actual_length)
 
 let big_bytes_of_string s =
   let bts = String.to_bytes s in
@@ -56,6 +61,8 @@ let of_list bts =
   List.map (fun b -> { buffer = b; position = 0; length = Array1.dim b }) bts
   |> Array.of_list
 
+let size bfs = Array.fold_left (fun u a -> u + a.position) 0 bfs
+
 (* let of_byte_list bts = *)
 (*   bts *)
 (*   |> List.map (fun b -> *)
@@ -65,10 +72,28 @@ let of_list bts =
 (*          a) *)
 (*   |> of_list *)
 
-let should_dump (threshold : int) (bfs : t) =
-  let total_length = Array.fold_left (fun u a -> u + a.position) 0 bfs in
-  total_length >= threshold
+let should_dump (threshold : int) (bfs : t) = size bfs >= threshold
+let are_empty bfs = Array.for_all (fun b -> b.position == 0) bfs
+let empty = Array.iter (fun b -> b.position <- 0)
+
+let blit_big_bytes src dist =
+  let open Array1 in
+  let len = src.position in
+  let src_sub = sub src.buffer 0 len in
+  let dist_sub = sub dist.buffer dist.position len in
+  blit src_sub dist_sub;
+  dist.position <- dist.position + len
+
+let blit src_bfs dist_bfs = Array.iter2 blit_big_bytes src_bfs dist_bfs
 
 let free bfs =
   Array.iter Buffer.clear bfs;
   Gc.major ()
+
+let print_buffers label bfs =
+  Printf.eprintf "%s:\n" label;
+  Array.iteri
+    (fun i b ->
+      Printf.eprintf "%02d. length=%d, actual_length=%d, position=%d\n" i
+        b.length (Array1.dim b.buffer) b.position)
+    bfs
