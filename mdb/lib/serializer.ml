@@ -25,9 +25,6 @@ module Make (OC : Cursor.CursorInterface) = struct
     Column.Deserializers.ColumnInfoDeserializer.encode_fragments bfs 0;
     let cols_bf = Stateful_buffers.get_buffer bfs 0 in
     let cols_lengths_bf = Stateful_buffers.get_buffer bfs 1 in
-    Utils.Debugging.print_hex_bytes "[@serializer] cols_bf after" cols_bf.buffer;
-    Utils.Debugging.print_hex_bytes "[@serializer] cols_lengths_bf after"
-      cols_lengths_bf.buffer;
     (* Dump column bytes *)
     output_cursor |> write cols_bf.position cols_bf.buffer |> ignore;
     let cols_lengths_offset = output_cursor |> position |> Int64.of_int in
@@ -80,17 +77,16 @@ module Make (OC : Cursor.CursorInterface) = struct
       Stateful_buffers.empty record_bfs
     and dump_buffers () =
       let open Stateful_buffers in
-      let lengths_bfs =
-        Stateful_buffers.create ~n:(Array.length chunk_bfs) ~len:9
-          ~actual_length:9
-      in
-      Array.fold_left
-        (fun i b ->
+      Stateful_buffers.print_buffers "Chunk fragments" chunk_bfs;
+      let len = 9 * Array.length chunk_bfs in
+      let lengths_bfs = Stateful_buffers.create ~n:1 ~len ~actual_length:len in
+      Array.iter
+        (fun b ->
           Column.Serializers.UIntSerializer.serialize (Int64.of_int b.position)
-            lengths_bfs i;
-          i + 1)
-        0 chunk_bfs
+            lengths_bfs 0)
+        chunk_bfs
       |> ignore;
+      (* Stateful_buffers.print_buffers "Chunk lengths" lengths_bfs; *)
       let lengths_a = get_buffer lengths_bfs 0 in
       OC.write lengths_a.position lengths_a.buffer output_cursor |> ignore;
       Array.iter
@@ -121,5 +117,6 @@ module Make (OC : Cursor.CursorInterface) = struct
       dump_buffers ());
     let n_chunks_a = Stateful_buffers.get_buffer n_chunks_bfs 0 in
     Column.Serializers.UIntSerializer.serialize !n_chunks n_chunks_bfs 0;
+    Utils.Debugging.print_hex_bytes "N_CHUNKS" n_chunks_a.buffer;
     OC.write n_chunks_a.position n_chunks_a.buffer output_cursor |> ignore
 end

@@ -1,41 +1,3 @@
-(*
-interface LogicColumn {
-  /** Load physical columns from chunk to buffers.
-   * `fragment_lengths[fragment_lengths_i + i]` is the length of the i-th physical column's fragment in `chunk`.
-   */
-  load_mut(
-    chunk: Chunk,
-    buffers: StatefulBuffers,
-    fragment_lengths: size_t[],
-    fragment_lengths_i: size_t,
-  ): void;
-
-  /** Serialize the data in `cell` into buffers
-   * `buffers[buffer_i + i]` for each physical column index `i`.
-   */
-  serialize_mut(cell: Data, buffers: StatefulBuffers, buffer_i: size_t): void;
-
-  /** Decode (ie. decrypt) data in buffers `buffer[i]`
-   * of lengths `fragment_lengths[fragment_lengths_i + i]`
-   * for each physical column index `i`.
-   */
-  decode_fragments(
-    buffers: StatefulBuffers,
-    bi: size_t,
-    fragment_lengths: size_t[],
-    fragment_lengths_i: size_t,
-  );
-
-  /** Deserialize data in `buffers` into the logical column.
-   */
-  deserialize_iter(buffers: StatefulBuffers): Iterator<Data>;
-
-  /** Number of physical columns needed to represent the logical column.
-   */
-  physical_length: size_t;
-}
-*)
-
 open Bigarray
 
 type col = [ `ColString | `ColInt ]
@@ -104,11 +66,8 @@ module Deserializers = struct
       if continue then deserialize_tail sign u (shift + 7) a
       else Int64.mul sign u
 
-    let decode_fragments bfs bi _ _ =
-      (Stateful_buffers.get_buffer bfs bi).position <- 0
-
-    let encode_fragments bfs bi =
-      (Stateful_buffers.get_buffer bfs bi).position <- 0
+    let decode_fragments _ _ _ _ = ()
+    let encode_fragments _ _ = ()
   end
 
   module UIntDeserializer : sig

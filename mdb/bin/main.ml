@@ -8,7 +8,7 @@ let () =
   let cols =
     [| ("some random number", `ColInt); ("fun little string", `ColString) |]
   in
-  TestSerializer.serialize 1000 cols
+  TestSerializer.serialize 20 cols
     (List.init 10 (fun i ->
          Data.Types.
            [|

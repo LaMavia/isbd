@@ -90,10 +90,11 @@ let free bfs =
   Array.iter Buffer.clear bfs;
   Gc.major ()
 
-let print_buffers label bfs =
+let print_buffers label (bfs : t) =
   Printf.eprintf "%s:\n" label;
   Array.iteri
     (fun i b ->
-      Printf.eprintf "%02d. length=%d, actual_length=%d, position=%d\n" i
-        b.length (Array1.dim b.buffer) b.position)
+      Printf.eprintf "%02d. length=%d, actual_length=%d, position=%d, " i
+        b.length (Array1.dim b.buffer) b.position;
+      Utils.Debugging.print_hex_bytes "bytes" b.buffer)
     bfs
