@@ -15,12 +15,12 @@ let () =
   TestSerializer.serialize
     100
     cols
-    (List.init 2 (fun i ->
+    (List.init 10 (fun i ->
        Data.Types.
-         [| DataInt (Int64.mul 22222L (Int64.of_int i))
-          ; DataInt (Int64.mul 5345431L (Int64.of_int i))
+         [| DataInt (Int64.mul 22222L (Int64.of_int (i + 1)))
+          ; DataInt (Int64.mul 5345431L (Int64.of_int (i + 1)))
           ; DataVarchar (Printf.sprintf "Hello %d" i)
-          ; DataVarchar (List.init i (Fun.const ":3") |> String.concat "|")
+          ; DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|")
          |])
      |> List.to_seq)
     output_cursor;
@@ -44,6 +44,6 @@ let () =
   TestDeserializer.deserialize output_cursor columns chunks_length
   |> Seq.iteri (fun i r ->
     Printf.eprintf "%02d. " i;
-    Array.iter (fun v -> Printf.eprintf "%s " (Data.Types.to_str v)) r;
+    Array.iter (fun v -> Printf.eprintf "%s\t" (Data.Types.to_str v)) r;
     Printf.eprintf "\n")
 ;;

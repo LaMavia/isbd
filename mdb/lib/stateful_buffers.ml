@@ -13,7 +13,10 @@ type t = stb array
 let read_bytes : big_bytes -> int -> int -> bytes =
   fun a i0 length ->
   let open Array1 in
-  Bytes.init length (fun i -> get a (i0 + i))
+  Bytes.init length (fun i ->
+    (* Printf.eprintf "@[get] idx=%d / %d\n" (i0 + i) (dim a - 1); *)
+    flush_all ();
+    get a (i0 + i))
 ;;
 
 let write_bytes : big_bytes -> int -> int -> bytes -> unit =

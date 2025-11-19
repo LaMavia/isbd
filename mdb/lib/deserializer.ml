@@ -6,6 +6,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   let read_columns (input_cursor : IC.t) =
     let offsets_len = 16
     and input_len = len input_cursor in
+    Printf.eprintf "input_len=%d, seek_point=%d\n" input_len (input_len - offsets_len);
     let offset_bytes =
       input_cursor |> seek (input_len - offsets_len) |> read offsets_len
     in

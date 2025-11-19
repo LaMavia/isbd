@@ -80,7 +80,14 @@ module Deserializers = struct
 
     let rec deserialize_dispenser bfs bi = aux @@ Stateful_buffers.get_buffer bfs bi
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
-    and aux a () = if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
+
+    and aux a () =
+      (* Printf.eprintf *)
+      (*   "[uint::aux] pos=%d, len=%d, actual_len=%d\n" *)
+      (*   a.position *)
+      (*   a.length *)
+      (*   (Array1.dim a.buffer); *)
+      if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
 
     and deserialize_aux u shift a =
       let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
@@ -92,10 +99,14 @@ module Deserializers = struct
     ;;
 
     let decode_fragments bfs bi flens fi =
+      (* Utils.Debugging.print_int_array "@@flens" flens; *)
       (Stateful_buffers.get_buffer bfs bi).length <- flens.(fi)
     ;;
 
-    let encode_fragments _ _ = ()
+    let encode_fragments bfs bi =
+      let a = Stateful_buffers.get_buffer bfs bi in
+      a.length <- a.position
+    ;;
   end
 
   module VarcharDeserializer : sig
@@ -127,21 +138,21 @@ module Deserializers = struct
         |> Int64.to_int
       in
       let str_a = Stateful_buffers.get_buffer bfs bi in
-      Printf.eprintf
-        "total_str_length=%d, bi=%d, fi=%d, flen=%d, buffer_len=%d, "
-        total_str_length
-        bi
-        fi
-        flens.(fi)
-        (Array1.dim str_a.buffer);
-      Utils.Debugging.print_hex_bytes "bytes" str_a.buffer;
+      (* Printf.eprintf *)
+      (*   "total_str_length=%d, bi=%d, fi=%d, flen=%d, buffer_len=%d, " *)
+      (*   total_str_length *)
+      (*   bi *)
+      (*   fi *)
+      (*   flens.(fi) *)
+      (*   (Array1.dim str_a.buffer); *)
+      (* Utils.Debugging.print_hex_bytes "bytes" str_a.buffer; *)
       let decompressed_strings =
         LZ4.Bigbytes.decompress
           ~length:total_str_length
           (Array1.sub str_a.buffer 0 flens.(fi))
       in
       let len = Array1.dim decompressed_strings in
-      Printf.eprintf "len=%d\n\n" len;
+      (* Printf.eprintf "len=%d\n\n" len; *)
       Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
       str_a.length <- len
     ;;
@@ -155,6 +166,7 @@ module Deserializers = struct
       let len = dim compressed_strings in
       blit compressed_strings (sub str_a.buffer 0 len);
       str_a.position <- len;
+      str_a.length <- len;
       UIntDeserializer.encode_fragments bfs (bi + 1)
     ;;
   end
@@ -176,8 +188,24 @@ module Deserializers = struct
 
     and deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
 
-    let decode_fragments = VarcharDeserializer.decode_fragments
-    let encode_fragments = VarcharDeserializer.encode_fragments
+    let decode_fragments bfs bi flens fi =
+      (* Utils.Debugging.print_int_array "[colinfo::decode]" flens; *)
+      for i = 0 to 1 do
+        (* Printf.eprintf "i=%d\n" i; *)
+        let a = Stateful_buffers.get_buffer bfs (bi + i) in
+        a.length <- flens.(fi + i)
+      done
+    ;;
+
+    (* Stateful_buffers.print_buffers "decoded column info" bfs *)
+
+    let encode_fragments bfs bi =
+      for i = 0 to 1 do
+        let a = Stateful_buffers.get_buffer bfs (bi + i) in
+        a.length <- a.position;
+        a.position <- 0
+      done
+    ;;
   end
 end
 

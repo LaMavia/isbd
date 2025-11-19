@@ -6,3 +6,9 @@ let print_hex_bytes prefix a =
   Bytes.iter (fun c -> Printf.eprintf "%02x " (Char.code c)) b;
   Printf.eprintf "\n"
 ;;
+
+let print_int_array label arr =
+  Printf.eprintf "%s: " label;
+  Array.iter (Printf.eprintf "%d ") arr;
+  Printf.eprintf "\n"
+;;

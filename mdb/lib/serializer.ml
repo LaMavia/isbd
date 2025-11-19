@@ -20,18 +20,20 @@ module Make (OC : Cursor.CursorInterface) = struct
     logcols
     |> Array.iter (fun logcol ->
       Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
+    print_buffers "Columns before encoding" bfs;
     Column.Deserializers.ColumnInfoDeserializer.encode_fragments bfs 0;
     let cols_bf = get_buffer bfs 0 in
     let cols_lengths_bf = get_buffer bfs 1 in
     (* Dump column bytes *)
-    output_cursor |> write cols_bf.position cols_bf.buffer |> ignore;
+    output_cursor |> write cols_bf.length cols_bf.buffer |> ignore;
     let cols_lengths_offset = output_cursor |> position |> Int64.of_int in
     set_int64_be offsets_bytes 0 cols_offset;
     set_int64_be offsets_bytes 8 cols_lengths_offset;
     output_cursor
-    |> write cols_lengths_bf.position cols_lengths_bf.buffer
+    |> write cols_lengths_bf.length cols_lengths_bf.buffer
     |> write 16 offsets_bytes
-    |> ignore
+    |> ignore;
+    print_buffers "\nColumns after write" bfs
   ;;
 
   let serialize
