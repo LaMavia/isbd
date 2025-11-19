@@ -16,35 +16,41 @@ module type CursorInterface = sig
 end
 
 module StringCursor = struct
-  type t = { mutable i : int; mutable buffer : big_bytes; mutable length : int }
+  type t =
+    { mutable i : int
+    ; mutable buffer : big_bytes
+    ; mutable length : int
+    }
+
   type src = string
 
   let create s =
     Result.ok
-      {
-        i = 0;
-        buffer = Stateful_buffers.big_bytes_of_string s;
-        length = String.length s;
-      }
+      { i = 0; buffer = Stateful_buffers.big_bytes_of_string s; length = String.length s }
+  ;;
 
   let len c = c.length
 
   let move di c =
     c.i <- c.i + di;
     c
+  ;;
 
   let seek i c =
     c.i <- i;
     c
+  ;;
 
   let read len c =
     let r = Array1.sub c.buffer c.i len in
     move len c |> ignore;
     r
+  ;;
 
   let write len bs c =
     let blen = c.length in
-    if c.i + len >= blen then (
+    if c.i + len >= blen
+    then (
       let added_len = c.i + len - blen in
       let a' = create_bytes (blen + (added_len * 2)) in
       write_big_bytes a' 0 c.length c.buffer;
@@ -52,6 +58,7 @@ module StringCursor = struct
     write_big_bytes c.buffer c.i len bs;
     c.length <- max (c.i + len) c.length;
     move len c
+  ;;
 
   let position c = c.i
   let to_bytes c = Array1.sub c.buffer 0 c.i

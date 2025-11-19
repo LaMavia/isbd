@@ -2,3 +2,4 @@
 #
 # Use `ocamlformat --help` to see a list of possible options.
 # Use `ocamlformat --print-config` to see the current settings.
+profile=janestreet

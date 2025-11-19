@@ -1,13 +1,20 @@
 open Bigarray
 
-type col = [ `ColString | `ColInt ]
+type col =
+  [ `ColString
+  | `ColInt
+  ]
 
 let col_constr_of_type = function
   | '\001' -> Option.some `ColInt
   | '\002' -> Option.some `ColString
   | _ -> Option.None
+;;
 
-let byte_of_col = function `ColInt -> '\001' | `ColString -> '\002'
+let byte_of_col = function
+  | `ColInt -> '\001'
+  | `ColString -> '\002'
+;;
 
 module type LogicalColumn = sig
   type t
@@ -35,19 +42,14 @@ module Deserializers = struct
   end = struct
     let physical_length = 1
 
-    let rec deserialize_dispenser bfs bi =
-      aux @@ Stateful_buffers.get_buffer bfs bi
-
+    let rec deserialize_dispenser bfs bi = aux @@ Stateful_buffers.get_buffer bfs bi
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and aux a () =
-      if a.position >= a.length then Option.None
-      else deserialize_head a |> Option.some
+      if a.position >= a.length then Option.None else deserialize_head a |> Option.some
 
     and deserialize_head a =
-      let octet =
-        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
-      in
+      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
       let continue = octet >= 0b10000000
       and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
       and rest = Int.logand octet 0b00111111 in
@@ -56,15 +58,13 @@ module Deserializers = struct
       if continue then deserialize_tail sign u 6 a else Int64.mul sign u
 
     and deserialize_tail sign u shift a =
-      let octet =
-        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
-      in
+      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
       a.position <- a.position + 1;
-      if continue then deserialize_tail sign u (shift + 7) a
-      else Int64.mul sign u
+      if continue then deserialize_tail sign u (shift + 7) a else Int64.mul sign u
+    ;;
 
     let decode_fragments _ _ _ _ = ()
     let encode_fragments _ _ = ()
@@ -75,23 +75,18 @@ module Deserializers = struct
   end = struct
     let physical_length = 1
 
-    let rec deserialize_dispenser bfs bi =
-      aux @@ Stateful_buffers.get_buffer bfs bi
-
+    let rec deserialize_dispenser bfs bi = aux @@ Stateful_buffers.get_buffer bfs bi
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
-
-    and aux a () =
-      if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
+    and aux a () = if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
 
     and deserialize_aux u shift a =
-      let octet =
-        Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0
-      in
+      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
       a.position <- a.position + 1;
       if continue then deserialize_aux u (shift + 7) a else Option.some u
+    ;;
 
     let decode_fragments _ _ _ _ = ()
     let encode_fragments _ _ = ()
@@ -103,9 +98,7 @@ module Deserializers = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
-      let uint_dispenser =
-        UIntDeserializer.deserialize_dispenser bfs (bi + 1)
-      in
+      let uint_dispenser = UIntDeserializer.deserialize_dispenser bfs (bi + 1) in
       fun () ->
         Option.map
           (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
@@ -118,21 +111,25 @@ module Deserializers = struct
       let r = Stateful_buffers.read_bytes a.buffer a.position ilen in
       a.position <- a.position + ilen;
       r |> String.of_bytes
+    ;;
 
     let decode_fragments bfs bi flens fi =
       UIntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
       let total_str_length =
         UIntDeserializer.deserialize_seq bfs (bi + 1)
-        |> Seq.fold_left Int64.add 0L |> Int64.to_int
+        |> Seq.fold_left Int64.add 0L
+        |> Int64.to_int
       in
       let str_a = Stateful_buffers.get_buffer bfs bi in
       let decompressed_strings =
-        LZ4.Bigbytes.decompress ~length:total_str_length
+        LZ4.Bigbytes.decompress
+          ~length:total_str_length
           (Array1.sub str_a.buffer 0 flens.(fi))
       in
       let len = Array1.dim decompressed_strings in
       Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
       str_a.position <- len
+    ;;
 
     let encode_fragments bfs bi =
       let open Array1 in
@@ -144,6 +141,7 @@ module Deserializers = struct
       blit compressed_strings (sub str_a.buffer 0 len);
       str_a.position <- len;
       UIntDeserializer.encode_fragments bfs (bi + 1)
+    ;;
   end
 
   module ColumnInfoDeserializer : sig
@@ -161,8 +159,7 @@ module Deserializers = struct
         let* typ = String.get s slen |> col_constr_of_type in
         Option.some (name, typ)
 
-    and deserialize_seq bfs bi =
-      Seq.of_dispenser @@ deserialize_dispenser bfs bi
+    and deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
 
     let decode_fragments = VarcharDeserializer.decode_fragments
     let encode_fragments = VarcharDeserializer.encode_fragments
@@ -190,12 +187,11 @@ module Serializers = struct
       and sign_mask = if is_neg then 0b01000000 else 0b0
       and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
       let bts = Bytes.make 1 '\000' in
-      Bytes.set_uint8 bts 0
-        Int.(continue_mask |> logor sign_mask |> logor octet_val);
+      Bytes.set_uint8 bts 0 Int.(continue_mask |> logor sign_mask |> logor octet_val);
       Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then
-        serialize_tail a (Int64.shift_right_logical v 6) bts
+      if continue_mask > 0
+      then serialize_tail a (Int64.shift_right_logical v 6) bts
       else ()
 
     and serialize_tail a v bts =
@@ -204,9 +200,10 @@ module Serializers = struct
       Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
       Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then
-        serialize_tail a (Int64.shift_right_logical v 7) bts
+      if continue_mask > 0
+      then serialize_tail a (Int64.shift_right_logical v 7) bts
       else ()
+    ;;
   end
 
   module UIntSerializer : sig
@@ -224,9 +221,10 @@ module Serializers = struct
       Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
       Stateful_buffers.write_bytes a.buffer a.position 1 bts;
       a.position <- a.position + 1;
-      if continue_mask > 0 then
-        serialize_aux a (Int64.shift_right_logical v 7) bts
+      if continue_mask > 0
+      then serialize_aux a (Int64.shift_right_logical v 7) bts
       else ()
+    ;;
   end
 
   module VarcharSerializer : sig
@@ -242,6 +240,7 @@ module Serializers = struct
     and serialize_str v vlen a =
       String.iteri (fun i c -> Array1.set a.buffer (a.position + i) c) v;
       a.position <- a.position + vlen
+    ;;
     (* Printf.eprintf "[serialize_str] after: %s;" v; *)
     (* Utils.Debugging.print_hex_bytes "BUFFER" a.buffer *)
   end
@@ -254,6 +253,7 @@ module Serializers = struct
     let serialize (s, t) bfs bi =
       let s' = String.cat s @@ String.make 1 @@ byte_of_col t in
       VarcharSerializer.serialize s' bfs bi
+    ;;
   end
 end
 
@@ -277,13 +277,15 @@ functor
         Array1.(blit Chunk.(sub chunk.data chunk.pos len) buffer.buffer);
         Chunk.(chunk.pos <- chunk.pos + len)
       done
+    ;;
 
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =
-     fun d bfs bi ->
+      fun d bfs bi ->
       let open Data.Types in
       match d with
       | DataInt i -> Serializers.IntSerializer.serialize i bfs bi
       | DataVarchar s -> Serializers.VarcharSerializer.serialize s bfs bi
+    ;;
 
     let decode_fragments = V.decode_fragments
     let encode_fragments = V.encode_fragments

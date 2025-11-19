@@ -1,1 +1,4 @@
-type t = { offset : int; reason : string }
+type t =
+  { offset : int
+  ; reason : string
+  }
