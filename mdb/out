@@ -1,0 +1,4 @@
+Fatal error: exception LZ4.Corrupted
+Raised at LZ4.Bigbytes.decompress_into in file "lib/LZ4.ml", line 94, characters 6-21
+Called from LZ4.Bigbytes.decompress in file "lib/LZ4.ml", line 101, characters 18-46
+Called from Dune__exe__Main in file "bin/main.ml", line 8, characters 2-40

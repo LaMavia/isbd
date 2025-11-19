@@ -25,6 +25,11 @@ module Types = struct
     | DataVarchar s -> Result.ok s
     | d -> make_casting_error "varchar" d
   ;;
+
+  let to_str = function
+    | DataInt i -> string_of_int (Int64.to_int i)
+    | DataVarchar s -> Printf.sprintf "«%s»" s
+  ;;
 end
 
 type data_record = Types.t array

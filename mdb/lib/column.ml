@@ -66,7 +66,10 @@ module Deserializers = struct
       if continue then deserialize_tail sign u (shift + 7) a else Int64.mul sign u
     ;;
 
-    let decode_fragments _ _ _ _ = ()
+    let decode_fragments bfs bi flens fi =
+      (Stateful_buffers.get_buffer bfs bi).length <- flens.(fi)
+    ;;
+
     let encode_fragments _ _ = ()
   end
 
@@ -88,7 +91,10 @@ module Deserializers = struct
       if continue then deserialize_aux u (shift + 7) a else Option.some u
     ;;
 
-    let decode_fragments _ _ _ _ = ()
+    let decode_fragments bfs bi flens fi =
+      (Stateful_buffers.get_buffer bfs bi).length <- flens.(fi)
+    ;;
+
     let encode_fragments _ _ = ()
   end
 
@@ -128,7 +134,7 @@ module Deserializers = struct
       in
       let len = Array1.dim decompressed_strings in
       Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
-      str_a.position <- len
+      str_a.length <- len
     ;;
 
     let encode_fragments bfs bi =
@@ -241,8 +247,6 @@ module Serializers = struct
       String.iteri (fun i c -> Array1.set a.buffer (a.position + i) c) v;
       a.position <- a.position + vlen
     ;;
-    (* Printf.eprintf "[serialize_str] after: %s;" v; *)
-    (* Utils.Debugging.print_hex_bytes "BUFFER" a.buffer *)
   end
 
   module ColumnInfoSerializer : sig

@@ -7,7 +7,7 @@ let () =
   let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
   let cols = [| "some random number", `ColInt; "fun little string", `ColString |] in
   TestSerializer.serialize
-    2000
+    10
     cols
     (List.init 10 (fun i ->
        Data.Types.
@@ -24,12 +24,18 @@ let () =
   flush_all ();
   Printf.eprintf "\n=========================================\n\n";
   output_cursor |> Cursor.StringCursor.seek 0 |> ignore;
-  TestDeserializer.read_columns output_cursor
+  let columns, chunks_length = TestDeserializer.read_columns output_cursor in
+  columns
   |> Array.iter (fun (s, t) ->
     Printf.eprintf
       "%s\t%s\n"
       s
       (match t with
        | `ColInt -> "INT"
-       | `ColString -> "VCHAR"))
+       | `ColString -> "VCHAR"));
+  TestDeserializer.deserialize output_cursor columns chunks_length
+  |> Seq.iteri (fun i r ->
+    Printf.eprintf "%02d. " i;
+    Array.iter (fun v -> Printf.eprintf "%s " (Data.Types.to_str v)) r;
+    Printf.eprintf "\n")
 ;;

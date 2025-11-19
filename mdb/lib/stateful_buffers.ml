@@ -47,6 +47,11 @@ let set_int64_be =
 ;;
 
 let get_buffer (bfs : t) (i : int) = bfs.(i)
+
+let set_buffer (bfs : t) (i : int) a =
+  bfs.(i) <- { buffer = a; position = 0; length = Array1.dim a }
+;;
+
 let create_bytes len = Array1.create Char c_layout len
 
 let create_stb len actual_len =

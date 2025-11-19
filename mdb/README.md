@@ -20,6 +20,7 @@ Tablice są wyłącznie dla uproszczenia i są po prostu sklejeniem elementów j
 
 ```ts
 interface MDB {
+  suggested_buffer_size: size_t;
   chunks: Chunk[];
   columns: Column[];
   columns_lengths: vle_uint[];
@@ -34,6 +35,7 @@ type ColumnType =
 type vle_uint = /*  */;
 
 interface Chunk {
+  fragments_relative_offset: size_t;
   fragment_lengths: vle_uint[]; /* len(fragment_lengths) =
                                     sum(physical_columns(typeof(c)) for c in MDB.columns)
                                   */

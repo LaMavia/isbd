@@ -41,6 +41,7 @@ module Make (OC : Cursor.CursorInterface) = struct
         (output_cursor : OC.t)
     =
     let open Stateful_buffers in
+    let open Bigarray in
     let buffer_size = LZ4.compress_bound buffer_size_suggestion in
     let phys_lens =
       logcols
@@ -64,6 +65,9 @@ module Make (OC : Cursor.CursorInterface) = struct
     and chunk_bfs =
       create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
     in
+    let buffer_size_bytes = create_bytes 8 in
+    set_int64_be buffer_size_bytes 0 (Int64.of_int buffer_size_suggestion);
+    OC.write (Array1.dim buffer_size_bytes) buffer_size_bytes output_cursor |> ignore;
     let lengths_len = 9 * Array.length chunk_bfs in
     let lengths_bfs = create ~n:1 ~len:lengths_len ~actual_length:lengths_len in
     let rec can_append_record_to_chunk () =
@@ -88,7 +92,19 @@ module Make (OC : Cursor.CursorInterface) = struct
         chunk_bfs
       |> ignore;
       let lengths_a = get_buffer lengths_bfs 0 in
-      OC.write lengths_a.position lengths_a.buffer output_cursor |> ignore;
+      let fragments_offset_offset = OC.position output_cursor in
+      (* print_buffers "lengths_bfs" lengths_bfs; *)
+      output_cursor |> OC.move 8 |> OC.write lengths_a.position lengths_a.buffer |> ignore;
+      let fragments_offset = OC.position output_cursor in
+      set_int64_be
+        lengths_a.buffer
+        0
+        (Int64.of_int (fragments_offset - fragments_offset_offset));
+      output_cursor
+      |> OC.seek fragments_offset_offset
+      |> OC.write 8 lengths_a.buffer
+      |> OC.seek fragments_offset
+      |> ignore;
       Array.iter (fun b -> OC.write b.position b.buffer output_cursor |> ignore) chunk_bfs;
       empty chunk_bfs;
       empty lengths_bfs
