@@ -127,12 +127,21 @@ module Deserializers = struct
         |> Int64.to_int
       in
       let str_a = Stateful_buffers.get_buffer bfs bi in
+      Printf.eprintf
+        "total_str_length=%d, bi=%d, fi=%d, flen=%d, buffer_len=%d, "
+        total_str_length
+        bi
+        fi
+        flens.(fi)
+        (Array1.dim str_a.buffer);
+      Utils.Debugging.print_hex_bytes "bytes" str_a.buffer;
       let decompressed_strings =
         LZ4.Bigbytes.decompress
           ~length:total_str_length
           (Array1.sub str_a.buffer 0 flens.(fi))
       in
       let len = Array1.dim decompressed_strings in
+      Printf.eprintf "len=%d\n\n" len;
       Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
       str_a.length <- len
     ;;

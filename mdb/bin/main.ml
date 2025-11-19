@@ -5,14 +5,22 @@ let () =
   let module TestSerializer = Serializer.Make (Cursor.StringCursor) in
   let module TestDeserializer = Deserializer.Make (Cursor.StringCursor) in
   let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
-  let cols = [| "some random number", `ColInt; "fun little string", `ColString |] in
+  let cols =
+    [| "col_int_1", `ColInt
+     ; "col_int_2", `ColInt
+     ; "col_vchar_1", `ColString
+     ; "col_vchar_2", `ColString
+    |]
+  in
   TestSerializer.serialize
-    10
+    100
     cols
-    (List.init 10 (fun i ->
+    (List.init 2 (fun i ->
        Data.Types.
-         [| DataInt (Int64.mul 10000L (Int64.of_int i))
+         [| DataInt (Int64.mul 22222L (Int64.of_int i))
+          ; DataInt (Int64.mul 5345431L (Int64.of_int i))
           ; DataVarchar (Printf.sprintf "Hello %d" i)
+          ; DataVarchar (List.init i (Fun.const ":3") |> String.concat "|")
          |])
      |> List.to_seq)
     output_cursor;
