@@ -21,7 +21,6 @@ Tablice są wyłącznie dla uproszczenia i są po prostu sklejeniem elementów j
 ```ts
 interface MDB {
   chunks: Chunk[];
-  chunks_number: size_t;
   columns: Column[];
   columns_lengths: vle_uint[];
   columns_offset: size_t;

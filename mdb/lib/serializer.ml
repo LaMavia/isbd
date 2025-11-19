@@ -62,8 +62,6 @@ module Make (OC : Cursor.CursorInterface) = struct
       Stateful_buffers.create ~n:total_physcols ~len:buffer_size_suggestion
         ~actual_length:buffer_size
     in
-    let n_chunks = ref 0L in
-    let n_chunks_bfs = Stateful_buffers.create ~n:1 ~len:9 ~actual_length:9 in
     let rec can_append_record_to_chunk () =
       Array.for_all2
         Stateful_buffers.(
@@ -92,8 +90,7 @@ module Make (OC : Cursor.CursorInterface) = struct
       Array.iter
         (fun b -> OC.write b.position b.buffer output_cursor |> ignore)
         chunk_bfs;
-      Stateful_buffers.empty chunk_bfs;
-      n_chunks := Int64.add !n_chunks 1L
+      Stateful_buffers.empty chunk_bfs
     and encode_fragments () =
       let encode_column ((i, fi) : int * int) encoder =
         encoder chunk_bfs fi;
@@ -114,9 +111,5 @@ module Make (OC : Cursor.CursorInterface) = struct
     Seq.iter process_record record_stream;
     if not (Stateful_buffers.are_empty chunk_bfs) then (
       encode_fragments ();
-      dump_buffers ());
-    let n_chunks_a = Stateful_buffers.get_buffer n_chunks_bfs 0 in
-    Column.Serializers.UIntSerializer.serialize !n_chunks n_chunks_bfs 0;
-    Utils.Debugging.print_hex_bytes "N_CHUNKS" n_chunks_a.buffer;
-    OC.write n_chunks_a.position n_chunks_a.buffer output_cursor |> ignore
+      dump_buffers ())
 end
