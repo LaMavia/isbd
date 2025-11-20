@@ -6,7 +6,6 @@ module Make (IC : Cursor.CursorInterface) = struct
   let read_columns (input_cursor : IC.t) =
     let offsets_len = 16
     and input_len = len input_cursor in
-    Printf.eprintf "input_len=%d, seek_point=%d\n" input_len (input_len - offsets_len);
     let offset_bytes =
       input_cursor |> seek (input_len - offsets_len) |> read offsets_len
     in
@@ -59,8 +58,6 @@ module Make (IC : Cursor.CursorInterface) = struct
       get_int64_be (input_cursor |> seek 0 |> read 8) 0 |> Int64.to_int
     in
     let buffer_size = LZ4.compress_bound suggested_buffer_size in
-    Printf.eprintf "sugg=%d, bs=%d\n" suggested_buffer_size buffer_size;
-    flush_all ();
     let parsed_record_seq = ref Seq.empty
     and fraglen_bfs =
       Stateful_buffers.create ~n:1 ~len:max_uint_len ~actual_length:max_uint_len

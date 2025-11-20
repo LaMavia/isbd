@@ -117,7 +117,7 @@ module MMapCursor = struct
   end
 
   type t =
-    { map : ManagedMMap.t
+    { mutable map : ManagedMMap.t
     ; mutable position : int
     ; mutable length : int
     }
@@ -158,6 +158,11 @@ module MMapCursor = struct
   let len c = c.length
   let position c = c.position
   let to_bytes c = c.map.array
-  let truncate c = Unix.ftruncate c.map.fd c.length
+
+  let truncate c =
+    Unix.ftruncate c.map.fd c.length;
+    c.map <- ManagedMMap.of_file_descr c.map.fd
+  ;;
+
   let close c = Unix.close c.map.fd
 end
