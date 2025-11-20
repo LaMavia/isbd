@@ -2,9 +2,9 @@ open Lib
 open Bigarray
 
 let () =
-  let module TestSerializer = Serializer.Make (Cursor.StringCursor) in
-  let module TestDeserializer = Deserializer.Make (Cursor.StringCursor) in
-  let output_cursor = Cursor.StringCursor.create "" |> Result.get_ok in
+  let module TestSerializer = Serializer.Make (Cursor.MMapCursor) in
+  let module TestDeserializer = Deserializer.Make (Cursor.MMapCursor) in
+  let output_cursor = Cursor.MMapCursor.create "./nsq.bin" |> Result.get_ok in
   let cols =
     [| "col_int_1", `ColInt
      ; "col_int_2", `ColInt
@@ -25,13 +25,14 @@ let () =
      |> List.to_seq)
     output_cursor;
   TestSerializer.write_columns cols output_cursor;
-  let bts = output_cursor |> Cursor.StringCursor.to_bytes in
+  Cursor.MMapCursor.truncate output_cursor;
+  let bts = output_cursor |> Cursor.MMapCursor.to_bytes in
   let s = String.init (Array1.dim bts) (Array1.get bts) in
   Printf.eprintf "OUTPUT_TEXT:\n%s\n" s;
   Utils.Debugging.print_hex_bytes "OUTPUT" bts;
   flush_all ();
   Printf.eprintf "\n=========================================\n\n";
-  output_cursor |> Cursor.StringCursor.seek 0 |> ignore;
+  output_cursor |> Cursor.MMapCursor.seek 0 |> ignore;
   let columns, chunks_length = TestDeserializer.read_columns output_cursor in
   columns
   |> Array.iter (fun (s, t) ->

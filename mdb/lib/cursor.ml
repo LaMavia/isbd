@@ -64,19 +64,100 @@ module StringCursor = struct
   let to_bytes c = Array1.sub c.buffer 0 c.i
 end
 
-(* module BufferCursor : CursorInterface with type src := big_bytes = struct *)
-(*   type t = { mutable i : int; mutable buffer : big_bytes; mutable length : int } *)
-(**)
-(*   let create b = Result.ok { i = 0; buffer = b; length = Array1.dim b } *)
-(*   let len c = c.length *)
-(**)
-(*   let move di c = *)
-(*     c.i <- c.i + di; *)
-(*     c *)
-(**)
-(*   let seek i c = c.i <- i; c *)
-(**)
-(*   let read len c = *)
-(*     let r = Bytes.init len (fun i -> Array1.get c.buffer (c.i + i) ) in *)
-(**)
-(* end *)
+module MMapCursor = struct
+  module ManagedMMap = struct
+    open Bigarray
+
+    let page_size = 16 * 1024 * 1024
+    let page_size_f = float_of_int page_size
+
+    type arr = (char, int8_unsigned_elt, c_layout) Array1.t
+
+    type t =
+      { fd : Unix.file_descr
+      ; mutable size : int
+      ; mutable array : arr
+      }
+
+    let map_file_descr fd =
+      Unix.map_file fd Char C_layout true [| -1 |] |> array1_of_genarray
+    ;;
+
+    let of_file_descr fd =
+      let open Unix in
+      { fd; array = map_file_descr fd; size = (fstat fd).st_size }
+    ;;
+
+    let of_path path =
+      let open Unix in
+      openfile path [ O_RDWR ] 0o640 |> of_file_descr
+    ;;
+
+    let get a offset length = Array1.sub a.array offset length
+
+    let set a offset length bts =
+      if offset + length >= a.size
+      then (
+        let extend_size =
+          page_size
+          * (int_of_float
+             @@ ceil
+             @@ (float_of_int (offset + length - a.size) /. page_size_f))
+        in
+        let len_written =
+          Unix.lseek a.fd 0 Unix.SEEK_END |> ignore;
+          let r = Unix.write a.fd (Bytes.make extend_size '\000') 0 extend_size in
+          r
+        in
+        a.size <- a.size + len_written;
+        a.array <- map_file_descr a.fd;
+        Gc.major ());
+      Array1.(blit bts (sub a.array offset length))
+    ;;
+  end
+
+  type t =
+    { map : ManagedMMap.t
+    ; mutable position : int
+    ; mutable length : int
+    }
+
+  type src = string
+
+  let create path =
+    try
+      let map = ManagedMMap.of_path path in
+      { map; position = 0; length = map.size } |> Result.ok
+    with
+    | Failure reason -> Result.error reason
+  ;;
+
+  let move di c =
+    c.position <- c.position + di;
+    c.length <- max c.length c.position;
+    c
+  ;;
+
+  let read len c =
+    move len c |> ignore;
+    ManagedMMap.get c.map (c.position - len) len
+  ;;
+
+  let write len b c =
+    move len c |> ignore;
+    ManagedMMap.set c.map (c.position - len) len (Array1.sub b 0 len);
+    c
+  ;;
+
+  let seek offset c =
+    c.position <- offset;
+    c.length <- max c.length c.position;
+    c
+  ;;
+
+  let len c = c.length
+  let position c = c.position
+  let to_bytes c = c.map.array
+  let truncate c = Unix.ftruncate c.map.fd c.length
+  let close c = Unix.close c.map.fd
+end
