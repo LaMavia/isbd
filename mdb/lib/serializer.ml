@@ -1,13 +1,15 @@
 module Make (OC : Cursor.CursorInterface) = struct
   module OutChunk = Chunk.Make (OC)
 
+  let max_uint_size = 15
+
   let write_columns (logcols : (string * Column.col) array) (output_cursor : OC.t) =
     let open OC in
     let open Stateful_buffers in
     let cols_offset = output_cursor |> position |> Int64.of_int in
     let max_total_cols_len_approx, max_total_cols_lengths_len =
       Array.fold_right
-        (fun (s, _) (u, ul) -> u + String.length s + 1, ul + 9)
+        (fun (s, _) (u, ul) -> u + String.length s + 1, ul + max_uint_size)
         logcols
         (0, 0)
     in
@@ -68,7 +70,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     let buffer_size_bytes = create_bytes 8 in
     set_int64_be buffer_size_bytes 0 (Int64.of_int buffer_size_suggestion);
     OC.write (Array1.dim buffer_size_bytes) buffer_size_bytes output_cursor |> ignore;
-    let lengths_len = 9 * Array.length chunk_bfs in
+    let lengths_len = max_uint_size * Array.length chunk_bfs in
     let lengths_bfs = create ~n:1 ~len:lengths_len ~actual_length:lengths_len in
     let rec can_append_record_to_chunk () =
       Array.for_all2

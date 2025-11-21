@@ -7,6 +7,6 @@
  (name main)
  (public_name mdb)
  (package mdb)
- (libraries lib memtrace yojson ppx_deriving_yojson.runtime)
+ (libraries lib memtrace yojson ppx_deriving_yojson.runtime progress)
  (preprocess
   (pps ppx_deriving_yojson)))

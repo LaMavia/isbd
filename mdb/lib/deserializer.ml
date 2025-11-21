@@ -4,7 +4,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   open Bigarray
 
   let read_columns (input_cursor : IC.t) =
-    let offsets_len = 16
+    let offsets_len = 15
     and input_len = len input_cursor in
     let offset_bytes =
       input_cursor |> seek (input_len - offsets_len) |> read offsets_len
@@ -36,7 +36,7 @@ module Make (IC : Cursor.CursorInterface) = struct
         (logcols : (string * Column.col) array)
         (chunks_len : int)
     =
-    let max_uint_len = 9
+    let max_uint_len = 16
     and phys_lens =
       logcols
       |> Array.map (function
@@ -78,6 +78,7 @@ module Make (IC : Cursor.CursorInterface) = struct
         let fraglens_len =
           (Stateful_buffers.get_int64_be (IC.read 8 input_cursor) 0 |> Int64.to_int) - 8
         and prev_fraglen_a_length = fraglen_a.length in
+        (* Printf.eprintf "fraglens_len=%d\n" fraglens_len; *)
         Array1.(
           blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
         fraglen_a.position <- 0;

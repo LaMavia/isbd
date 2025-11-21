@@ -47,6 +47,8 @@
               legacyPackages.libunwind
               memtrace
               unix-errno
+              progress
+              alcotest
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
             ];

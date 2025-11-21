@@ -23,26 +23,26 @@ let () =
   Arg.parse speclist anon_fun usage_msg;
   let path = List.hd !input_files in
   let cursor = C.create path |> Result.get_ok in
+  let n = 10_000 in
   match !mode with
   | Serialize ->
     let cols =
       [| "col_int_1", `ColInt
-       ; "col_int_2", `ColInt
-       ; "col_vchar_1", `ColString
-       ; "col_vchar_2", `ColString
+         (* ; "col_int_2", `ColInt *)
+         (* ; "col_vchar_1", `ColString *)
+         (* ; "col_vchar_2", `ColString *)
       |]
     in
     TestSerializer.serialize
-      300000
+      1_000_000
       cols
-      (List.init 10000 (fun i ->
+      (Seq.init n (fun i ->
          Data.Types.
            [| DataInt (Int64.of_int (i + 1))
-            ; DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
-            ; DataVarchar (Printf.sprintf "Hello %d" i)
-            ; DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|")
-           |])
-       |> List.to_seq)
+              (* ; DataInt (Int64.mul 432435L (Int64.of_int (i + 1))) *)
+              (* ; DataVarchar (Printf.sprintf "Hello %d" i) *)
+              (* ; DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|") *)
+           |]))
       cursor;
     TestSerializer.write_columns cols cursor;
     C.truncate cursor;
