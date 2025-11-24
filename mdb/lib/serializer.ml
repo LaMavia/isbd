@@ -85,7 +85,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     and dump_buffers () =
       Array.iter
         (fun b ->
-           Column.Serializers.UIntSerializer.serialize
+           Column.Serializers.IntSerializer.serialize
              (Int64.of_int b.position)
              lengths_bfs
              0)

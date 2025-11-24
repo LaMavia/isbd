@@ -79,14 +79,14 @@ module Make (IC : Cursor.CursorInterface) = struct
           blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
         fraglen_a.position <- 0;
         fraglen_a.length <- fraglens_len;
-        Column.Deserializers.UIntDeserializer.decode_fragments
+        Column.Deserializers.IntDeserializer.decode_fragments
           fraglen_bfs
           0
           [| fraglens_len |]
           0;
         (* load each column into bfs *)
         let flens =
-          Column.Deserializers.UIntDeserializer.deserialize_seq fraglen_bfs 0
+          Column.Deserializers.IntDeserializer.deserialize_seq fraglen_bfs 0
           |> Array.of_seq
           |> Array.mapi (fun i flen ->
             let flen = Int64.to_int flen in

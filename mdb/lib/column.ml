@@ -73,49 +73,13 @@ module Deserializers = struct
     let encode_fragments _ _ = ()
   end
 
-  module UIntDeserializer : sig
-    include ColumnDeserializer with type t := int64
-  end = struct
-    let physical_length = 1
-
-    let rec deserialize_dispenser bfs bi = aux @@ Stateful_buffers.get_buffer bfs bi
-    and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
-
-    and aux a () =
-      (* Printf.eprintf *)
-      (*   "[uint::aux] pos=%d, len=%d, actual_len=%d\n" *)
-      (*   a.position *)
-      (*   a.length *)
-      (*   (Array1.dim a.buffer); *)
-      if a.position >= a.length then Option.none else deserialize_aux 0L 0 a
-
-    and deserialize_aux u shift a =
-      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
-      let continue = octet >= 0b10000000
-      and rest = Int.logand octet 0b01111111 in
-      let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      a.position <- a.position + 1;
-      if continue then deserialize_aux u (shift + 7) a else Option.some u
-    ;;
-
-    let decode_fragments bfs bi flens fi =
-      (* Utils.Debugging.print_int_array "@@flens" flens; *)
-      (Stateful_buffers.get_buffer bfs bi).length <- flens.(fi)
-    ;;
-
-    let encode_fragments bfs bi =
-      let a = Stateful_buffers.get_buffer bfs bi in
-      a.length <- a.position
-    ;;
-  end
-
   module VarcharDeserializer : sig
     include ColumnDeserializer with type t := string
   end = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
-      let uint_dispenser = UIntDeserializer.deserialize_dispenser bfs (bi + 1) in
+      let uint_dispenser = IntDeserializer.deserialize_dispenser bfs (bi + 1) in
       fun () ->
         Option.map
           (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
@@ -131,9 +95,9 @@ module Deserializers = struct
     ;;
 
     let decode_fragments bfs bi flens fi =
-      UIntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
+      IntDeserializer.decode_fragments bfs (bi + 1) flens (fi + 1);
       let total_str_length =
-        UIntDeserializer.deserialize_seq bfs (bi + 1)
+        IntDeserializer.deserialize_seq bfs (bi + 1)
         |> Seq.fold_left Int64.add 0L
         |> Int64.to_int
       in
@@ -167,7 +131,7 @@ module Deserializers = struct
       blit compressed_strings (sub str_a.buffer 0 len);
       str_a.position <- len;
       str_a.length <- len;
-      UIntDeserializer.encode_fragments bfs (bi + 1)
+      IntDeserializer.encode_fragments bfs (bi + 1)
     ;;
   end
 
@@ -178,9 +142,9 @@ module Deserializers = struct
 
     let rec deserialize_dispenser bfs bi =
       let open Utils.Mopt in
-      let vchar_dispender = VarcharDeserializer.deserialize_dispenser bfs bi in
+      let vchar_dispenser = VarcharDeserializer.deserialize_dispenser bfs bi in
       fun () ->
-        let* s = vchar_dispender () in
+        let* s = vchar_dispenser () in
         let slen = String.length s - 1 in
         let name = String.sub s 0 slen in
         let* typ = String.get s slen |> col_constr_of_type in
@@ -249,27 +213,6 @@ module Serializers = struct
     ;;
   end
 
-  module UIntSerializer : sig
-    include ColumnSerializer with type t := int64
-  end = struct
-    let physical_length = 1
-
-    let rec serialize v bfs bi =
-      let bts = Bytes.make 1 '\000' in
-      serialize_aux (Stateful_buffers.get_buffer bfs bi) v bts
-
-    and serialize_aux a v bts =
-      let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
-      and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
-      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
-      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
-      a.position <- a.position + 1;
-      if continue_mask > 0
-      then serialize_aux a (Int64.shift_right_logical v 7) bts
-      else ()
-    ;;
-  end
-
   module VarcharSerializer : sig
     include ColumnSerializer with type t := string
   end = struct
@@ -277,7 +220,7 @@ module Serializers = struct
 
     let rec serialize v bfs bi =
       let vlen = String.length v in
-      UIntSerializer.serialize (Int64.of_int vlen) bfs (bi + 1);
+      IntSerializer.serialize (Int64.of_int vlen) bfs (bi + 1);
       serialize_str v vlen (Stateful_buffers.get_buffer bfs bi)
 
     and serialize_str v vlen a =
