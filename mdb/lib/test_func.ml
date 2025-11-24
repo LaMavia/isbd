@@ -3,7 +3,7 @@ let test_func (logcols : (string * Column.col) array) (s : Data.Types.t array Se
     Array.map
       (function
         | _, `ColInt -> Either.left (0., 0.)
-        | _, `ColString -> Either.right (Hashtbl.create 26 : (char, int) Hashtbl.t))
+        | _, `ColVarchar -> Either.right (Hashtbl.create 26 : (char, int) Hashtbl.t))
       logcols
   and aux u r =
     Array.iteri

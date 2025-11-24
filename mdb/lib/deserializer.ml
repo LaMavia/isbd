@@ -37,18 +37,18 @@ module Make (IC : Cursor.CursorInterface) = struct
     and phys_lens =
       logcols
       |> Array.map (function
-        | _, `ColString -> Column.VarcharLogCol.physical_length
+        | _, `ColVarchar -> Column.VarcharLogCol.physical_length
         | _, `ColInt -> Column.IntLogCol.physical_length)
     and deserializers =
       logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.deserialize_iter
-        | _, `ColString -> Column.VarcharLogCol.deserialize_iter)
+        | _, `ColVarchar -> Column.VarcharLogCol.deserialize_iter)
     and decoders =
       logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.decode_fragments
-        | _, `ColString -> Column.VarcharLogCol.decode_fragments)
+        | _, `ColVarchar -> Column.VarcharLogCol.decode_fragments)
     in
     let total_physcols = Array.fold_right ( + ) phys_lens 0 in
     let suggested_buffer_size =

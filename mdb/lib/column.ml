@@ -1,19 +1,19 @@
 open Bigarray
 
 type col =
-  [ `ColString
+  [ `ColVarchar
   | `ColInt
   ]
 
 let col_constr_of_type = function
   | '\001' -> Option.some `ColInt
-  | '\002' -> Option.some `ColString
+  | '\002' -> Option.some `ColVarchar
   | _ -> Option.None
 ;;
 
 let byte_of_col = function
   | `ColInt -> '\001'
-  | `ColString -> '\002'
+  | `ColVarchar -> '\002'
 ;;
 
 module type LogicalColumn = sig

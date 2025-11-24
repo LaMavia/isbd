@@ -29,8 +29,8 @@ let () =
     let cols =
       [| "col_int_1", `ColInt
        ; "col_int_2", `ColInt
-       ; "col_vchar_1", `ColString
-       ; "col_vchar_2", `ColString
+       ; "col_vchar_1", `ColVarchar
+       ; "col_vchar_2", `ColVarchar
       |]
     in
     TestSerializer.serialize

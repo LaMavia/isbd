@@ -18,7 +18,7 @@ module Testable = struct
         pp_print_string ppf name;
         print_space ();
         pp_print_string ppf "INT64"
-      | name, `ColString ->
+      | name, `ColVarchar ->
         pp_print_string ppf name;
         print_space ();
         pp_print_string ppf "VARCHAR"
