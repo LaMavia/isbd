@@ -37,45 +37,120 @@ module type ColumnDeserializer = sig
 end
 
 module Deserializers = struct
-  module IntDeserializer : sig
-    include ColumnDeserializer with type t := int64
-  end = struct
+  module IntDeserializer : ColumnDeserializer with type t := int64 = struct
+    open Stateful_buffers
+
     let physical_length = 1
 
-    let rec deserialize_dispenser bfs bi = aux @@ Stateful_buffers.get_buffer bfs bi
+    let rec deserialize_dispenser bfs bi =
+      deserialize_aux @@ Stateful_buffers.get_buffer bfs bi
+
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
-    and aux a () =
-      if a.position >= a.length then Option.None else deserialize_head a |> Option.some
+    and deserialize_aux a () =
+      if a.position >= a.length
+      then Option.None
+      else (
+        let r = get_int64_be a.buffer a.position in
+        a.position <- a.position + 8;
+        Option.some r)
+    ;;
 
-    and deserialize_head a =
-      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
+    let rec decode_fragments bfs bi flens fi =
+      let enc_len = flens.(fi) in
+      let a = get_buffer bfs bi
+      and dec_a = create_stb enc_len enc_len in
+      a.position <- 0;
+      a.length <- enc_len;
+      Printf.eprintf
+        "[%s] Decoding %d(%d) into %d\n"
+        __FUNCTION__
+        a.length
+        (Array1.dim a.buffer)
+        enc_len;
+      flush_all ();
+      Seq.of_dispenser (decode_vle a) |> Seq.iter (decode_delta dec_a);
+      a.length <- enc_len;
+      blit_big_bytes dec_a a
+
+    and decode_vle a () =
+      if a.position >= a.length then Option.None else decode_vle_head a |> Option.some
+
+    and decode_vle_head a =
+      let octet = Stateful_buffers.get_uint8 a.buffer a.position in
       let continue = octet >= 0b10000000
       and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
       and rest = Int.logand octet 0b00111111 in
       let u = rest |> Int64.of_int in
       a.position <- a.position + 1;
-      if continue then deserialize_tail sign u 6 a else Int64.mul sign u
+      if continue then decode_vle_tail sign u 6 a else Int64.mul sign u
 
-    and deserialize_tail sign u shift a =
-      let octet = Bytes.get_uint8 (Stateful_buffers.read_bytes a.buffer a.position 1) 0 in
+    and decode_vle_tail sign u shift a =
+      let octet = Stateful_buffers.get_uint8 a.buffer a.position in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
       a.position <- a.position + 1;
-      if continue then deserialize_tail sign u (shift + 7) a else Int64.mul sign u
+      if continue then decode_vle_tail sign u (shift + 7) a else Int64.mul sign u
+
+    and decode_delta a =
+      let last = ref 0L in
+      fun v ->
+        let r = Int64.add v !last in
+        last := r;
+        Printf.eprintf "[%s] setting [%d, %d]\n" __FUNCTION__ a.position (a.position + 7);
+        flush_all ();
+        set_int64_be a.buffer a.position r;
+        a.position <- a.position + 8
     ;;
 
-    let decode_fragments bfs bi flens fi =
-      (Stateful_buffers.get_buffer bfs bi).length <- flens.(fi)
-    ;;
+    let rec encode_fragments bfs bi =
+      let a = get_buffer bfs bi in
+      let enc_a = create_stb a.length (Array1.dim a.buffer) in
+      a.position <- 0;
+      Seq.of_dispenser (encode_delta a) |> Seq.iter (encode_vle enc_a);
+      blit_big_bytes enc_a a
 
-    let encode_fragments _ _ = ()
+    and encode_delta a =
+      let last = ref 0L in
+      fun () ->
+        if a.position >= a.length
+        then Option.None
+        else (
+          let v = get_int64_be a.buffer a.position in
+          let r = Int64.sub v !last in
+          Printf.eprintf "[%s] encoding %Ld, %Ld -> %Ld\n" __FUNCTION__ v !last r;
+          last := v;
+          a.position <- a.position + 8;
+          Option.Some r)
+
+    and encode_vle a v = encode_vle_head a (v < 0L) (Int64.abs v)
+
+    and encode_vle_head (a : stb) is_neg v =
+      let continue_mask = if v > 63L then 0b10000000 else 0b0 (*2^6 - 1*)
+      and sign_mask = if is_neg then 0b01000000 else 0b0
+      and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
+      let bts = Bytes.make 1 '\000' in
+      Bytes.set_uint8 bts 0 Int.(continue_mask |> logor sign_mask |> logor octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
+      a.position <- a.position + 1;
+      if continue_mask > 0
+      then encode_vle_tail a (Int64.shift_right_logical v 6) bts
+      else ()
+
+    and encode_vle_tail a v bts =
+      let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
+      and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
+      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
+      a.position <- a.position + 1;
+      if continue_mask > 0
+      then encode_vle_tail a (Int64.shift_right_logical v 7) bts
+      else ()
+    ;;
   end
 
-  module VarcharDeserializer : sig
-    include ColumnDeserializer with type t := string
-  end = struct
+  module VarcharDeserializer : ColumnDeserializer with type t := string = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
@@ -135,9 +210,7 @@ module Deserializers = struct
     ;;
   end
 
-  module ColumnInfoDeserializer : sig
-    include ColumnDeserializer with type t := string * col
-  end = struct
+  module ColumnInfoDeserializer : ColumnDeserializer with type t := string * col = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
@@ -181,41 +254,25 @@ module type ColumnSerializer = sig
 end
 
 module Serializers = struct
-  module IntSerializer : sig
-    include ColumnSerializer with type t := int64
-  end = struct
+  module IntSerializer : ColumnSerializer with type t := int64 = struct
     let physical_length = 1
 
-    let rec serialize v bfs bi =
-      serialize_head (Stateful_buffers.get_buffer bfs bi) (v < 0L) (Int64.abs v)
-
-    and serialize_head a is_neg v =
-      let continue_mask = if v > 63L then 0b10000000 else 0b0 (*2^6 - 1*)
-      and sign_mask = if is_neg then 0b01000000 else 0b0
-      and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
-      let bts = Bytes.make 1 '\000' in
-      Bytes.set_uint8 bts 0 Int.(continue_mask |> logor sign_mask |> logor octet_val);
-      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
-      a.position <- a.position + 1;
-      if continue_mask > 0
-      then serialize_tail a (Int64.shift_right_logical v 6) bts
-      else ()
-
-    and serialize_tail a v bts =
-      let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
-      and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
-      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
-      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
-      a.position <- a.position + 1;
-      if continue_mask > 0
-      then serialize_tail a (Int64.shift_right_logical v 7) bts
-      else ()
+    let serialize v bfs bi =
+      let open Stateful_buffers in
+      let a = get_buffer bfs bi in
+      set_int64_be a.buffer a.position v;
+      a.position <- a.position + 8;
+      Printf.eprintf
+        "[%s] serializing %Ld -> %d[%d, %d]\n"
+        __FUNCTION__
+        v
+        bi
+        (a.position - 8)
+        (a.position - 1)
     ;;
   end
 
-  module VarcharSerializer : sig
-    include ColumnSerializer with type t := string
-  end = struct
+  module VarcharSerializer : ColumnSerializer with type t := string = struct
     let physical_length = 2
 
     let rec serialize v bfs bi =
@@ -263,6 +320,7 @@ functor
       done
     ;;
 
+    (** TODO: Add error handling, and dependency on [V] *)
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =
       fun d bfs bi ->
       match d with

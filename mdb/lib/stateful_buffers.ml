@@ -28,6 +28,13 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
   blit (sub b 0 len) (sub a i0 len)
 ;;
 
+let get_uint8 =
+  let buffer = Bytes.make 1 '\000' in
+  fun (a : big_bytes) (offset : int) ->
+    Array1.get a offset |> Bytes.set buffer 0;
+    Bytes.get_uint8 buffer 0
+;;
+
 let get_int64_be =
   let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) ->
