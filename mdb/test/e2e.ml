@@ -30,7 +30,7 @@ module Testable = struct
 end
 
 let test_e2e =
-  (* let open Data.Types in *)
+  let open Data.Types in
   let module C = Cursor.StringCursor in
   let module TestSerializer = Serializer.Make (C) in
   let module TestDeserializer = Deserializer.Make (C) in
@@ -40,13 +40,20 @@ let test_e2e =
     , fun () ->
         let cursor = C.create "" |> Result.get_ok in
         TestSerializer.serialize buffer_size cols data cursor;
-        Utils.Debugging.print_hex_bytes "cursor after ser" (C.to_bytes cursor);
         cursor |> C.seek 0 |> ignore;
         let got_cols, got_data = TestDeserializer.deserialize cursor in
         Alcotest.(check Testable.columns) "same columns" cols got_cols;
         Alcotest.(check (seq Testable.data_record)) "same records" data got_data )
   in
-  [ test ~name:"Empty" (List.to_seq []) [||] ~buffer_size:10 ]
+  [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10
+  ; (let n_cols = 5 in
+     test
+       ~name:"Ints"
+       (Seq.init 50 (fun i ->
+          Array.init n_cols (fun j -> DataInt (Int64.of_int @@ (i * (j + 1))))))
+       (Array.init n_cols (fun j -> Printf.sprintf "Column%d" j, `ColInt))
+       ~buffer_size:1000)
+  ]
 ;;
 
 (* [ test ~name:"int" (VInt 2) ~expected:2. *)

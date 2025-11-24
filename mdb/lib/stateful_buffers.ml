@@ -13,10 +13,7 @@ type t = stb array
 let read_bytes : big_bytes -> int -> int -> bytes =
   fun a i0 length ->
   let open Array1 in
-  Bytes.init length (fun i ->
-    (* Printf.eprintf "@[get] idx=%d / %d\n" (i0 + i) (dim a - 1); *)
-    flush_all ();
-    get a (i0 + i))
+  Bytes.init length (fun i -> get a (i0 + i))
 ;;
 
 let write_bytes : big_bytes -> int -> int -> bytes -> unit =
@@ -34,8 +31,6 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
 let get_int64_be =
   let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) ->
-    Printf.eprintf "[%s] %d[%d, %d]\n" __FUNCTION__ (Array1.dim a) offset (offset + 7);
-    flush_all ();
     for i = 0 to 7 do
       Array1.get a (offset + i) |> Bytes.set buffer i
     done;
@@ -45,8 +40,6 @@ let get_int64_be =
 let set_int64_be =
   let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) (v : int64) ->
-    Printf.eprintf "[%s] %d[%d, %d]\n" __FUNCTION__ (Array1.dim a) offset (offset + 7);
-    flush_all ();
     Bytes.set_int64_be buffer 0 v;
     for i = 0 to 7 do
       Bytes.get buffer i |> Array1.set a (offset + i)
@@ -81,16 +74,6 @@ let of_list bts =
 ;;
 
 let size bfs = Array.fold_left (fun u a -> u + a.position) 0 bfs
-
-(* let of_byte_list bts = *)
-(*   bts *)
-(*   |> List.map (fun b -> *)
-(*          let len = Bytes.length b in *)
-(*          let a = Array1.create Char c_layout len in *)
-(*          write_bytes a 0 len b; *)
-(*          a) *)
-(*   |> of_list *)
-
 let should_dump (threshold : int) (bfs : t) = size bfs >= threshold
 let are_empty bfs = Array.for_all (fun b -> b.position == 0) bfs
 let empty = Array.iter (fun b -> b.position <- 0)

@@ -42,8 +42,6 @@ module StringCursor = struct
   ;;
 
   let read len c =
-    Printf.eprintf "[%s] %d[%d, %d]\n" __FUNCTION__ (Array1.dim c.buffer) c.i (c.i + len);
-    flush_all ();
     let r = Array1.sub c.buffer c.i len in
     move len c |> ignore;
     r
@@ -137,7 +135,6 @@ module MMapCursor = struct
   let move di c =
     c.position <- c.position + di;
     c.length <- max c.length c.position;
-    Printf.eprintf "[%s] length=%d\n" __FUNCTION__ c.length;
     c
   ;;
 
@@ -163,11 +160,6 @@ module MMapCursor = struct
   let to_bytes c = c.map.array
 
   let truncate c =
-    Printf.eprintf
-      "[%s] truncating from %d to %d\n"
-      __FUNCTION__
-      (Array1.dim c.map.array)
-      c.length;
     Unix.ftruncate c.map.fd c.length;
     c.map <- ManagedMMap.of_file_descr c.map.fd
   ;;
