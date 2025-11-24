@@ -30,30 +30,23 @@ module Testable = struct
 end
 
 let test_e2e =
-  let open Data.Types in
-  let module TestSerializer = Serializer.Make (Cursor.StringCursor) in
-  let module TestDeserializer = Deserializer.Make (Cursor.StringCursor) in
+  (* let open Data.Types in *)
+  let module C = Cursor.StringCursor in
+  let module TestSerializer = Serializer.Make (C) in
+  let module TestDeserializer = Deserializer.Make (C) in
   let test ~name data cols ~buffer_size =
     ( Printf.sprintf "%s" name
     , `Quick
     , fun () ->
-        let cursor = Cursor.StringCursor.create "" |> Result.get_ok in
+        let cursor = C.create "" |> Result.get_ok in
         TestSerializer.serialize buffer_size cols data cursor;
-        Utils.Debugging.print_hex_bytes
-          "cursor after ser"
-          (Cursor.StringCursor.to_bytes cursor);
-        cursor |> Cursor.StringCursor.seek 0 |> ignore;
-        let got_cols, got_chunks_len = TestDeserializer.read_columns cursor in
-        let got_data = TestDeserializer.deserialize cursor got_cols got_chunks_len in
+        Utils.Debugging.print_hex_bytes "cursor after ser" (C.to_bytes cursor);
+        cursor |> C.seek 0 |> ignore;
+        let got_cols, got_data = TestDeserializer.deserialize cursor in
         Alcotest.(check Testable.columns) "same columns" cols got_cols;
         Alcotest.(check (seq Testable.data_record)) "same records" data got_data )
   in
-  [ test
-      ~name:"Empty"
-      (List.to_seq [ [| DataInt 1L |] ])
-      [| "col1", `ColInt |]
-      ~buffer_size:10
-  ]
+  [ test ~name:"Empty" (List.to_seq []) [||] ~buffer_size:10 ]
 ;;
 
 (* [ test ~name:"int" (VInt 2) ~expected:2. *)

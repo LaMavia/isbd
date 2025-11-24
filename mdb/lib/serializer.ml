@@ -30,6 +30,12 @@ module Make (OC : Cursor.CursorInterface) = struct
     let cols_lengths_offset = output_cursor |> position |> Int64.of_int in
     set_int64_be offsets_bytes 0 cols_offset;
     set_int64_be offsets_bytes 8 cols_lengths_offset;
+    Printf.eprintf
+      "[%s :: %d] cols_offset=%Ld, cols_lengths_offset=%Ld\n"
+      __FUNCTION__
+      __LINE__
+      cols_offset
+      cols_lengths_offset;
     output_cursor
     |> write cols_lengths_bf.length cols_lengths_bf.buffer
     |> write 16 offsets_bytes
@@ -129,6 +135,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     if not (are_empty chunk_bfs)
     then (
       encode_fragments ();
-      dump_buffers ())
+      dump_buffers ());
+    write_columns logcols output_cursor
   ;;
 end

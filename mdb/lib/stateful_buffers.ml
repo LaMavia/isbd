@@ -34,6 +34,8 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
 let get_int64_be =
   let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) ->
+    Printf.eprintf "[%s] %d[%d, %d]\n" __FUNCTION__ (Array1.dim a) offset (offset + 7);
+    flush_all ();
     for i = 0 to 7 do
       Array1.get a (offset + i) |> Bytes.set buffer i
     done;
@@ -43,6 +45,8 @@ let get_int64_be =
 let set_int64_be =
   let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) (v : int64) ->
+    Printf.eprintf "[%s] %d[%d, %d]\n" __FUNCTION__ (Array1.dim a) offset (offset + 7);
+    flush_all ();
     Bytes.set_int64_be buffer 0 v;
     for i = 0 to 7 do
       Bytes.get buffer i |> Array1.set a (offset + i)

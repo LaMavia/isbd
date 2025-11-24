@@ -4,7 +4,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   open Bigarray
 
   let read_columns (input_cursor : IC.t) =
-    let offsets_len = 15
+    let offsets_len = 16
     and input_len = len input_cursor in
     let offset_bytes =
       input_cursor |> seek (input_len - offsets_len) |> read offsets_len
@@ -31,11 +31,8 @@ module Make (IC : Cursor.CursorInterface) = struct
     columns, cols_offset
   ;;
 
-  let deserialize
-        (input_cursor : IC.t)
-        (logcols : (string * Column.col) array)
-        (chunks_len : int)
-    =
+  let deserialize (input_cursor : IC.t) =
+    let logcols, chunks_len = read_columns input_cursor in
     let max_uint_len = 16
     and phys_lens =
       logcols
@@ -132,6 +129,6 @@ module Make (IC : Cursor.CursorInterface) = struct
         empty bfs;
         give_record ()
     in
-    Seq.of_dispenser give_record
+    logcols, Seq.of_dispenser give_record
   ;;
 end
