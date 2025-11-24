@@ -47,6 +47,30 @@ let test_e2e =
         Alcotest.(check (seq Testable.data_record)) "same records" data got_data )
   in
   [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10 ()
+  ; test
+      ~name:"Small ints"
+      (List.to_seq [ [| `DataInt 1L; `DataInt 2L |]; [| `DataInt 3L; `DataInt 4L |] ])
+      [| "int1", `ColInt; "int2", `ColInt |]
+      ~buffer_size:10
+      ()
+  ; test
+      ~name:"Small varchar"
+      (List.to_seq
+         [ [| `DataVarchar "Lorem"; `DataVarchar "Ipsum" |]
+         ; [| `DataVarchar "Dolor"; `DataVarchar "Sit" |]
+         ])
+      [| "vc1", `ColVarchar; "vc2", `ColVarchar |]
+      ~buffer_size:100
+      ()
+  ; test
+      ~name:"Small mixed"
+      (List.to_seq
+         [ [| `DataVarchar "Zuzanna"; `DataInt 23L |]
+         ; [| `DataVarchar "Karolina"; `DataInt 25L |]
+         ])
+      [| "name", `ColVarchar; "age", `ColInt |]
+      ~buffer_size:20
+      ()
   ; (let n_cols = 2000
      and n_rows = 500 in
      test
@@ -54,9 +78,9 @@ let test_e2e =
        (Seq.init n_rows (fun i ->
           Array.init n_cols (fun j -> `DataInt (Int64.of_int @@ (i * (j + 1))))))
        (Array.init n_cols (fun j -> Printf.sprintf "Column%d" j, `ColInt))
-       ~buffer_size:(n_cols * Const.max_uint_len * 2))
-      ~speed:`Slow
-      ()
+       ~buffer_size:(n_cols * Const.max_uint_len * 2)
+       ~speed:`Slow
+       ())
   ]
 ;;
 
