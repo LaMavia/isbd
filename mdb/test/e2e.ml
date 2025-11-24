@@ -3,10 +3,9 @@ open Lib
 module Testable = struct
   let data_record =
     let open Data in
-    let open Data.Types in
     let pp_data_type ppf = function
-      | DataInt i -> Format.pp_print_int ppf @@ Int64.to_int i
-      | DataVarchar s -> Format.pp_print_string ppf s
+      | `DataInt i -> Format.pp_print_int ppf @@ Int64.to_int i
+      | `DataVarchar s -> Format.pp_print_string ppf s
     in
     let pp_data_record ppf (d : data_record) = Format.pp_print_array pp_data_type ppf d in
     Alcotest.testable pp_data_record ( = )
@@ -30,7 +29,6 @@ module Testable = struct
 end
 
 let test_e2e =
-  let open Data.Types in
   let module C = Cursor.StringCursor in
   let module TestSerializer = Serializer.Make (C) in
   let module TestDeserializer = Deserializer.Make (C) in
@@ -54,7 +52,7 @@ let test_e2e =
      test
        ~name:(Printf.sprintf "Wide Ints")
        (Seq.init n_rows (fun i ->
-          Array.init n_cols (fun j -> DataInt (Int64.of_int @@ (i * (j + 1))))))
+          Array.init n_cols (fun j -> `DataInt (Int64.of_int @@ (i * (j + 1))))))
        (Array.init n_cols (fun j -> Printf.sprintf "Column%d" j, `ColInt))
        ~buffer_size:(n_cols * Const.max_uint_len * 2))
       ~speed:`Slow

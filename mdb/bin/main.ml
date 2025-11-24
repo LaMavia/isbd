@@ -29,20 +29,19 @@ let () =
     let cols =
       [| "col_int_1", `ColInt
        ; "col_int_2", `ColInt
-         (* ; "col_vchar_1", `ColString *)
-         (* ; "col_vchar_2", `ColString *)
+       ; "col_vchar_1", `ColString
+       ; "col_vchar_2", `ColString
       |]
     in
     TestSerializer.serialize
       1_000_000
       cols
       (Seq.init n (fun i ->
-         Data.Types.
-           [| DataInt (Int64.of_int (i + 1))
-            ; DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
-              (* ; DataVarchar (Printf.sprintf "Hello %d" i) *)
-              (* ; DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|") *)
-           |]))
+         [| `DataInt (Int64.of_int (i + 1))
+          ; `DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
+          ; `DataVarchar (Printf.sprintf "Hello %d" i)
+          ; `DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|")
+         |]))
       cursor;
     C.truncate cursor;
     C.close cursor

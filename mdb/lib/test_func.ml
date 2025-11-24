@@ -1,5 +1,4 @@
 let test_func (logcols : (string * Column.col) array) (s : Data.Types.t array Seq.t) =
-  let open Data.Types in
   let init_val =
     Array.map
       (function
@@ -10,13 +9,13 @@ let test_func (logcols : (string * Column.col) array) (s : Data.Types.t array Se
     Array.iteri
       (fun i c ->
          match c with
-         | DataInt n ->
+         | `DataInt n ->
            let n = Int64.to_float n in
            u.(i)
            <- Either.map_left
                 (fun (avg, m) -> (avg *. m /. (m +. 1.)) +. (n /. (m +. 1.)), m +. 1.)
                 u.(i)
-         | DataVarchar s ->
+         | `DataVarchar s ->
            u.(i)
            <- Either.map_right
                 (fun dict ->

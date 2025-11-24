@@ -322,10 +322,9 @@ functor
 
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =
       fun d bfs bi ->
-      let open Data.Types in
       match d with
-      | DataInt i -> Serializers.IntSerializer.serialize i bfs bi
-      | DataVarchar s -> Serializers.VarcharSerializer.serialize s bfs bi
+      | `DataInt i -> Serializers.IntSerializer.serialize i bfs bi
+      | `DataVarchar s -> Serializers.VarcharSerializer.serialize s bfs bi
     ;;
 
     let decode_fragments = V.decode_fragments
@@ -338,7 +337,7 @@ module VarcharColDesc : ColDesc = struct
 
   type t = string
 
-  let to_data s = Data.Types.DataVarchar s
+  let to_data s = `DataVarchar s
 end
 
 module VarcharLogCol = MakeLogCol (VarcharColDesc)
@@ -348,7 +347,7 @@ module IntColDesc : ColDesc = struct
 
   type t = int64
 
-  let to_data i = Data.Types.DataInt i
+  let to_data i = `DataInt i
 end
 
 module IntLogCol = MakeLogCol (IntColDesc)
