@@ -33,7 +33,7 @@ module Make (IC : Cursor.CursorInterface) = struct
 
   let deserialize (input_cursor : IC.t) =
     let logcols, chunks_len = read_columns input_cursor in
-    let max_uint_len = 16
+    let max_fraglens_len = Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
       |> Array.map (function
@@ -57,7 +57,7 @@ module Make (IC : Cursor.CursorInterface) = struct
     let buffer_size = LZ4.compress_bound suggested_buffer_size in
     let parsed_record_seq = ref Seq.empty
     and fraglen_bfs =
-      Stateful_buffers.create ~n:1 ~len:max_uint_len ~actual_length:max_uint_len
+      Stateful_buffers.create ~n:1 ~len:max_fraglens_len ~actual_length:max_fraglens_len
     and bfs =
       Stateful_buffers.create
         ~n:total_physcols
@@ -75,7 +75,6 @@ module Make (IC : Cursor.CursorInterface) = struct
         let fraglens_len =
           (Stateful_buffers.get_int64_be (IC.read 8 input_cursor) 0 |> Int64.to_int) - 8
         and prev_fraglen_a_length = fraglen_a.length in
-        (* Printf.eprintf "fraglens_len=%d\n" fraglens_len; *)
         Array1.(
           blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
         fraglen_a.position <- 0;

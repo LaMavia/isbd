@@ -34,25 +34,31 @@ let test_e2e =
   let module C = Cursor.StringCursor in
   let module TestSerializer = Serializer.Make (C) in
   let module TestDeserializer = Deserializer.Make (C) in
-  let test ~name data cols ~buffer_size =
+  let test ~name data cols ~buffer_size ?(speed = `Quick) () =
     ( Printf.sprintf "%s" name
-    , `Quick
+    , speed
     , fun () ->
         let cursor = C.create "" |> Result.get_ok in
         TestSerializer.serialize buffer_size cols data cursor;
         cursor |> C.seek 0 |> ignore;
+        Printf.eprintf
+          "c_r ≈ %f\n"
+          (float_of_int (C.len cursor) /. float_of_int (max 1 (Data.approx_size data)));
         let got_cols, got_data = TestDeserializer.deserialize cursor in
         Alcotest.(check Testable.columns) "same columns" cols got_cols;
         Alcotest.(check (seq Testable.data_record)) "same records" data got_data )
   in
-  [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10
-  ; (let n_cols = 5 in
+  [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10 ()
+  ; (let n_cols = 2000
+     and n_rows = 500 in
      test
-       ~name:"Ints"
-       (Seq.init 50 (fun i ->
+       ~name:(Printf.sprintf "Wide Ints")
+       (Seq.init n_rows (fun i ->
           Array.init n_cols (fun j -> DataInt (Int64.of_int @@ (i * (j + 1))))))
        (Array.init n_cols (fun j -> Printf.sprintf "Column%d" j, `ColInt))
-       ~buffer_size:1000)
+       ~buffer_size:(n_cols * Const.max_uint_len * 2))
+      ~speed:`Slow
+      ()
   ]
 ;;
 

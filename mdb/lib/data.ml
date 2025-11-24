@@ -33,3 +33,15 @@ module Types = struct
 end
 
 type data_record = Types.t array
+
+let approx_size =
+  let open Types in
+  Seq.fold_left
+    (Array.fold_left (fun u c ->
+       u
+       +
+       match c with
+       | DataInt _ -> 8
+       | DataVarchar s -> String.length s))
+    0
+;;

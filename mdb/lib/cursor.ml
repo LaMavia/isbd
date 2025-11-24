@@ -61,7 +61,7 @@ module StringCursor = struct
   ;;
 
   let position c = c.i
-  let to_bytes c = Array1.sub c.buffer 0 c.i
+  let to_bytes c = Array1.sub c.buffer 0 c.length
 end
 
 module MMapCursor = struct
