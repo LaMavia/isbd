@@ -90,7 +90,7 @@ module MMapCursor = struct
 
     let of_path path =
       let open Unix in
-      openfile path [ O_RDWR ] 0o640 |> of_file_descr
+      openfile path [ O_RDWR; O_CREAT ] 0o640 |> of_file_descr
     ;;
 
     let get a offset length = Array1.sub a.array offset length
