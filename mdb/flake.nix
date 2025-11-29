@@ -171,28 +171,24 @@
         in
         {
           default = legacyPackages.mkShell {
-            # Development tools
-            packages = [
-              # Source file formatting
-              legacyPackages.nixpkgs-fmt
-              legacyPackages.ocamlformat
-              # For `dune build --watch ...`
-              legacyPackages.fswatch
+            packages = (with legacyPackages; [
+              nixpkgs-fmt
+              ocamlformat
+              fswatch
+              libunwind
+              babeltrace
+              perf
+              ttyplot
+              unixtools.xxd
+              (callPackage ./packages/ocaml_lz4.nix { })
+              bun
+            ]) ++ (with ocamlPackages; [
+              memtrace
+              utop
+              ocaml-lsp
               # For `dune build @doc`
-              ocamlPackages.odoc
-              # OCaml editor support
-              ocamlPackages.ocaml-lsp
-              # Fancy REPL thing
-              ocamlPackages.utop
-              legacyPackages.libunwind
-              ocamlPackages.memtrace
-              legacyPackages.babeltrace
-              legacyPackages.perf
-              legacyPackages.ttyplot
-              legacyPackages.unixtools.xxd
-              (legacyPackages.callPackage ./packages/ocaml_lz4.nix { })
-
-            ];
+              odoc
+            ]);
 
             # Tools from packages
             inputsFrom = [

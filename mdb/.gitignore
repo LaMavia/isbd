@@ -10,3 +10,5 @@ result
 # perf
 perf.data*
 *.perf
+
+node_modules

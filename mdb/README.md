@@ -1,5 +1,43 @@
 # Włączanie
 
+## Docker
+
+Dołączam `docker-compose.yaml` z serwisem `mdb-2` i volume'em `./data/:/data/`.
+
+### build
+
+```sh
+docker compose build
+```
+
+### run
+
+```sh
+docker compose run mdb-2 bash
+
+# [w kontenerze]
+# serializacja
+/app/result/bin/mdb -s /data/nsq.bin
+
+# deserializacja
+/app/result/bin/mdb -d /data/nsq.bin
+```
+
+### tests
+
+```sh
+
+docker compose run mdb-2 bash
+
+# [w kontenerze]
+nix --extra-experimental-features "nix-command flakes" develop
+
+# [w otwartym shellu]
+dune test
+```
+
+## Ręczne
+
 Sama uzywałam nixa (wystarczy `direnv allow` lub `nix develop`), ale pewnie można włączyć używając zwykłego opama:
 
 ```
@@ -53,42 +91,9 @@ interface Chunk {
 */
 ```
 
-## Example
-
-```ts
-{
-  chunks: [
-    {
-      fragment_lengths: [
-        vle_uint.encode(3),
-        vle_uint.encode(16),
-        vle_uint.encode(4),
-        vle_uint.encode(18),
-        vle_uint.encode(4),
-        vle_uint.encode(4)
-      ].join(""),
-      fragments: [
-        enc_col_int(`${vle_int.encode(0)}${vle_int.encode(1)}${vle_int.encode(2)}`),
-        enc_col_varchar(`ZuzannaKarolinaAnnaZofia`),
-        enc_col_uint(`${vle_uint.encode(7)}${vle_uint.encode(7)}${vle_uint.encode(4)}${vle_uint.encode(5)}`),
-        enc_col_varchar(`SurowiecKoszelaDilaiWeber`),
-        enc_col_uint(`${vle_uint.encode(8)}${vle_uint.encode(7)}${vle_uint.encode(5)}${vle_uint.encode(5)}`),
-        enc_col_int(`${vle_int.encode(23)}${vle_int.encode(22)}${vle_int.encode(26)}${vle_int.encode(25)}`)
-      ].join("")
-    }
-  ] satisfies Chunk[],
-  chunks_len: 1,
-  columns: [
-    `${vle_uint.encode(2)}id\001`,
-    `${vle_uint.encode(4)}name\002`,
-    `${vle_uint.encode(8)}last_name\002`,
-    `${vle_uint.encode(3)}age\001`
-  ] satisfies Column[],
-  columns_len: 4,
-} satisfies MDB
-```
-
 # Pseudocode
+
+Częściowo nieaktualny, ale może pomóc w zrozumieniu kodu.
 
 ```ts
 function serialize(
