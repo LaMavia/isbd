@@ -1,5 +1,4 @@
 open Lib
-(* open Bigarray *)
 
 type mode =
   | Serialize

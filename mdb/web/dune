@@ -1,0 +1,7 @@
+(include_subdirs qualified)
+
+(library
+ (name web)
+ (libraries lib yojson dream lwt ppx_yojson_conv)
+ (preprocess
+  (pps ppx_yojson_conv lwt_ppx)))

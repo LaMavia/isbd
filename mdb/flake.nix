@@ -43,12 +43,16 @@
 
             buildInputs = with ocamlPackages; [
               # OCaml package dependencies go here.
-              ppx_deriving_yojson
-              legacyPackages.libunwind
+              ppx_yojson_conv
+              yojson
+              lwt
+              lwt_ppx
+              dream
               memtrace
               unix-errno
               progress
               alcotest
+              legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
             ];
