@@ -16,7 +16,7 @@ module Make (IC : Cursor.CursorInterface) = struct
     let cols_bytes = input_cursor |> seek cols_offset |> read cols_lens in
     let cols_lengths_bytes = input_cursor |> read cols_lengths_lens in
     let bfs = of_list [ cols_bytes; cols_lengths_bytes ] in
-    Column.Deserializers.ColumnInfoDeserializer.decode_fragments
+    Column.Columns.ColumnInfoColumn.decode_fragments
       bfs
       0
       [| cols_lens; cols_lengths_lens |]
@@ -25,9 +25,7 @@ module Make (IC : Cursor.CursorInterface) = struct
     and cols_lengths_bf = get_buffer bfs 1 in
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
-    let columns =
-      Column.Deserializers.ColumnInfoDeserializer.deserialize_seq bfs 0 |> Array.of_seq
-    in
+    let columns = Column.Columns.ColumnInfoColumn.deserialize_seq bfs 0 |> Array.of_seq in
     columns, cols_offset
   ;;
 
@@ -79,14 +77,10 @@ module Make (IC : Cursor.CursorInterface) = struct
           blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
         fraglen_a.position <- 0;
         fraglen_a.length <- fraglens_len;
-        Column.Deserializers.IntDeserializer.decode_fragments
-          fraglen_bfs
-          0
-          [| fraglens_len |]
-          0;
+        Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
         (* load each column into bfs *)
         let flens =
-          Column.Deserializers.IntDeserializer.deserialize_seq fraglen_bfs 0
+          Column.Columns.IntColumn.deserialize_seq fraglen_bfs 0
           |> Array.of_seq
           |> Array.mapi (fun i flen ->
             let flen = Int64.to_int flen in

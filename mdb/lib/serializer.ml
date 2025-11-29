@@ -18,9 +18,8 @@ module Make (OC : Cursor.CursorInterface) = struct
     let bfs = of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ] in
     (* Serialize each column *)
     logcols
-    |> Array.iter (fun logcol ->
-      Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
-    Column.Deserializers.ColumnInfoDeserializer.encode_fragments bfs 0;
+    |> Array.iter (fun logcol -> Column.Columns.ColumnInfoColumn.serialize logcol bfs 0);
+    Column.Columns.ColumnInfoColumn.encode_fragments bfs 0;
     (* print_buffers "Encoded columns" bfs; *)
     let cols_bf = get_buffer bfs 0 in
     let cols_lengths_bf = get_buffer bfs 1 in
@@ -86,13 +85,10 @@ module Make (OC : Cursor.CursorInterface) = struct
     and dump_buffers () =
       Array.iter
         (fun b ->
-           Column.Serializers.IntSerializer.serialize
-             (Int64.of_int b.position)
-             lengths_bfs
-             0)
+           Column.Columns.IntColumn.serialize (Int64.of_int b.position) lengths_bfs 0)
         chunk_bfs
       |> ignore;
-      Column.Deserializers.IntDeserializer.encode_fragments lengths_bfs 0;
+      Column.Columns.IntColumn.encode_fragments lengths_bfs 0;
       let lengths_a = get_buffer lengths_bfs 0 in
       let fragments_offset_offset = OC.position output_cursor in
       output_cursor |> OC.move 8 |> OC.write lengths_a.position lengths_a.buffer |> ignore;
