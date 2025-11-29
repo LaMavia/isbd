@@ -101,6 +101,36 @@ let test_e2e =
        ~buffer_size:(n_cols * Const.max_uint_len * 2)
        ~speed:`Slow
        ())
+  ; ( "Invalid Varchar"
+    , `Quick
+    , fun () ->
+        let cursor = C.create "" |> Result.get_ok in
+        Alcotest.match_raises
+          "Fails"
+          (function
+            | Invalid_argument _ -> true
+            | _ -> false)
+          (fun () ->
+             TestSerializer.serialize
+               100
+               [| "varchar_col", `ColVarchar |]
+               (List.to_seq [ [| `DataInt 16L |] ])
+               cursor) )
+  ; ( "Invalid Int"
+    , `Quick
+    , fun () ->
+        let cursor = C.create "" |> Result.get_ok in
+        Alcotest.match_raises
+          "Fails"
+          (function
+            | Invalid_argument _ -> true
+            | _ -> false)
+          (fun () ->
+             TestSerializer.serialize
+               100
+               [| "int_col", `ColInt |]
+               (List.to_seq [ [| `DataVarchar "lorem ipsum" |] ])
+               cursor) )
   ]
 ;;
 
