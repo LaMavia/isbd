@@ -7,24 +7,12 @@ type t =
 module Internal = struct
   open Yojson.Safe.Util
 
-  let alt (fs : ('a -> 'b) list) (v : 'a) : 'b =
-    let rec aux fs e =
-      match fs with
-      | [] -> raise e
-      | f :: fs' ->
-        (try f v with
-         | e' -> aux fs' e')
-    in
-    aux fs (Invalid_argument "Empty alternative")
-  ;;
-
   let i64_of_yojson json = I64 (convert_each Int64Column.t_of_yojson json)
   let vc_of_yojson json = VC (convert_each VarcharColumn.t_of_yojson json)
 end
 
 let t_of_yojson (json : Yojson.Safe.t) =
-  let open Internal in
-  alt [ i64_of_yojson; vc_of_yojson ] json
+  Utils.Yj.alt Internal.[ i64_of_yojson; vc_of_yojson ] json
 ;;
 
 let yojson_of_t (v : t) : Yojson.Safe.t =
