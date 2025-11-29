@@ -21,15 +21,16 @@ module Make (OC : Cursor.CursorInterface) = struct
     |> Array.iter (fun logcol ->
       Column.Serializers.ColumnInfoSerializer.serialize logcol bfs 0);
     Column.Deserializers.ColumnInfoDeserializer.encode_fragments bfs 0;
+    (* print_buffers "Encoded columns" bfs; *)
     let cols_bf = get_buffer bfs 0 in
     let cols_lengths_bf = get_buffer bfs 1 in
     (* Dump column bytes *)
-    output_cursor |> write cols_bf.length cols_bf.buffer |> ignore;
+    output_cursor |> write cols_bf.position cols_bf.buffer |> ignore;
     let cols_lengths_offset = output_cursor |> position |> Int64.of_int in
     set_int64_be offsets_bytes 0 cols_offset;
     set_int64_be offsets_bytes 8 cols_lengths_offset;
     output_cursor
-    |> write cols_lengths_bf.length cols_lengths_bf.buffer
+    |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes
     |> ignore
   ;;
@@ -68,7 +69,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     let buffer_size_bytes = create_bytes 8 in
     set_int64_be buffer_size_bytes 0 (Int64.of_int buffer_size_suggestion);
     OC.write (Array1.dim buffer_size_bytes) buffer_size_bytes output_cursor |> ignore;
-    let lengths_len = Const.max_uint_len * Array.length chunk_bfs in
+    let lengths_len = 8 * Array.length chunk_bfs in
     let lengths_bfs = create ~n:1 ~len:lengths_len ~actual_length:lengths_len in
     let rec can_append_record_to_chunk () =
       Array.for_all2
@@ -91,9 +92,9 @@ module Make (OC : Cursor.CursorInterface) = struct
              0)
         chunk_bfs
       |> ignore;
+      Column.Deserializers.IntDeserializer.encode_fragments lengths_bfs 0;
       let lengths_a = get_buffer lengths_bfs 0 in
       let fragments_offset_offset = OC.position output_cursor in
-      (* print_buffers "lengths_bfs" lengths_bfs; *)
       output_cursor |> OC.move 8 |> OC.write lengths_a.position lengths_a.buffer |> ignore;
       let fragments_offset = OC.position output_cursor in
       set_int64_be
@@ -131,3 +132,15 @@ module Make (OC : Cursor.CursorInterface) = struct
     write_columns logcols output_cursor
   ;;
 end
+
+(*
+   00 00 00 00 00 00 00 64 
+00 00 00 00 00 00 00 0a 
+0a 00 
+  00 02 02 02 02 02 02 02 02 02 
+
+01 02 
+  02 
+  02 02 
+  02 02 02 02 02 69 6e 74 31 01 69 6e 74 32 01 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 26 00 00 00 00 00 00 00 30
+*)

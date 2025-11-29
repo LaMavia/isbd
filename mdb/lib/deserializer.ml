@@ -33,7 +33,7 @@ module Make (IC : Cursor.CursorInterface) = struct
 
   let deserialize (input_cursor : IC.t) =
     let logcols, chunks_len = read_columns input_cursor in
-    let max_fraglens_len = Const.max_uint_len * Array.length logcols
+    let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
       |> Array.map (function

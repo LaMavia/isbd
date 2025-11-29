@@ -30,9 +30,16 @@ module type ColumnDeserializer = sig
   type t
 
   val physical_length : int
+
+  (** [deserialize_dispenser bfs bi ()] changes the position of  [bfs.(bi)], but not the length *)
   val deserialize_dispenser : Stateful_buffers.t -> int -> unit -> t option
+
+  (** Changes the length to the target length, and pos = 0. Reads only the fraglen bytes from the src buffer. Can reassign the buffer *)
   val decode_fragments : Stateful_buffers.t -> int -> int array -> int -> unit
+
+  (** resulting position is the saved fraglen *)
   val encode_fragments : Stateful_buffers.t -> int -> unit
+
   val deserialize_seq : Stateful_buffers.t -> int -> t Seq.t
 end
 
@@ -58,70 +65,65 @@ module Deserializers = struct
 
     let rec decode_fragments bfs bi flens fi =
       let enc_len = flens.(fi) in
-      let a = get_buffer bfs bi
-      and dec_a = create_stb enc_len enc_len in
-      a.position <- 0;
+      let a = get_buffer bfs bi in
       a.length <- enc_len;
-      Printf.eprintf
-        "[%s] Decoding %d(%d) into %d\n"
-        __FUNCTION__
-        a.length
-        (Array1.dim a.buffer)
-        enc_len;
-      flush_all ();
-      Seq.of_dispenser (decode_vle a) |> Seq.iter (decode_delta dec_a);
-      a.length <- enc_len;
-      blit_big_bytes dec_a a
+      let decoded_values =
+        Seq.of_dispenser (decode_vle a) |> Seq.map (decode_delta ()) |> List.of_seq
+      in
+      let a' = create_bytes (List.length decoded_values * 8) in
+      List.iteri (fun i n -> set_int64_be a' (i * 8) n) decoded_values;
+      set_buffer bfs bi a';
+      (get_buffer bfs bi).length <- Array1.dim a'
 
-    and decode_vle a () =
-      if a.position >= a.length then Option.None else decode_vle_head a |> Option.some
+    and decode_vle a =
+      let pos = ref 0 in
+      fun () ->
+        if !pos >= a.length then Option.None else decode_vle_head a pos |> Option.some
 
-    and decode_vle_head a =
-      let octet = Stateful_buffers.get_uint8 a.buffer a.position in
+    and decode_vle_head a pos =
+      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
       let continue = octet >= 0b10000000
       and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
       and rest = Int.logand octet 0b00111111 in
       let u = rest |> Int64.of_int in
-      a.position <- a.position + 1;
-      if continue then decode_vle_tail sign u 6 a else Int64.mul sign u
+      pos := !pos + 1;
+      if continue then decode_vle_tail sign u 6 a pos else Int64.mul sign u
 
-    and decode_vle_tail sign u shift a =
-      let octet = Stateful_buffers.get_uint8 a.buffer a.position in
+    and decode_vle_tail sign u shift a pos =
+      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
       let continue = octet >= 0b10000000
       and rest = Int.logand octet 0b01111111 in
       let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      a.position <- a.position + 1;
-      if continue then decode_vle_tail sign u (shift + 7) a else Int64.mul sign u
+      pos := !pos + 1;
+      if continue then decode_vle_tail sign u (shift + 7) a pos else Int64.mul sign u
 
-    and decode_delta a =
+    and decode_delta () =
       let last = ref 0L in
       fun v ->
-        let r = Int64.add v !last in
-        last := r;
-        Printf.eprintf "[%s] setting [%d, %d]\n" __FUNCTION__ a.position (a.position + 7);
-        flush_all ();
-        set_int64_be a.buffer a.position r;
-        a.position <- a.position + 8
+        last := Int64.add v !last;
+        !last
     ;;
 
     let rec encode_fragments bfs bi =
+      let open Array1 in
       let a = get_buffer bfs bi in
-      let enc_a = create_stb a.length (Array1.dim a.buffer) in
-      a.position <- 0;
+      let max_enc_len = Const.max_uint_len * (dim a.buffer / 8) in
+      let enc_a = create_stb max_enc_len max_enc_len in
       Seq.of_dispenser (encode_delta a) |> Seq.iter (encode_vle enc_a);
-      blit_big_bytes enc_a a
+      blit (sub enc_a.buffer 0 enc_a.position) (sub a.buffer 0 enc_a.position);
+      a.position <- enc_a.position
 
     and encode_delta a =
-      let last = ref 0L in
+      let last = ref 0L
+      and pos = ref 0 in
       fun () ->
-        if a.position >= a.length
+        if !pos >= a.position
         then Option.None
         else (
-          let v = get_int64_be a.buffer a.position in
+          let v = get_int64_be a.buffer !pos in
           let r = Int64.sub v !last in
-          Printf.eprintf "[%s] encoding %Ld, %Ld -> %Ld\n" __FUNCTION__ v !last r;
           last := v;
-          a.position <- a.position + 8;
+          pos := !pos + 8;
           Option.Some r)
 
     and encode_vle a v = encode_vle_head a (v < 0L) (Int64.abs v)
@@ -151,20 +153,19 @@ module Deserializers = struct
   end
 
   module VarcharDeserializer : ColumnDeserializer with type t := string = struct
+    open Stateful_buffers
+
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
       let uint_dispenser = IntDeserializer.deserialize_dispenser bfs (bi + 1) in
-      fun () ->
-        Option.map
-          (deserialize_str @@ Stateful_buffers.get_buffer bfs bi)
-          (uint_dispenser ())
+      fun () -> Option.map (deserialize_str @@ get_buffer bfs bi) (uint_dispenser ())
 
     and deserialize_seq bfs bi = Seq.of_dispenser (deserialize_dispenser bfs bi)
 
     and deserialize_str a len =
       let ilen = Int64.to_int len in
-      let r = Stateful_buffers.read_bytes a.buffer a.position ilen in
+      let r = read_bytes a.buffer a.position ilen in
       a.position <- a.position + ilen;
       r |> String.of_bytes
     ;;
@@ -176,29 +177,21 @@ module Deserializers = struct
         |> Seq.fold_left Int64.add 0L
         |> Int64.to_int
       in
-      let str_a = Stateful_buffers.get_buffer bfs bi in
-      (* Printf.eprintf *)
-      (*   "total_str_length=%d, bi=%d, fi=%d, flen=%d, buffer_len=%d, " *)
-      (*   total_str_length *)
-      (*   bi *)
-      (*   fi *)
-      (*   flens.(fi) *)
-      (*   (Array1.dim str_a.buffer); *)
-      (* Utils.Debugging.print_hex_bytes "bytes" str_a.buffer; *)
+      let str_a = get_buffer bfs bi in
       let decompressed_strings =
         LZ4.Bigbytes.decompress
           ~length:total_str_length
           (Array1.sub str_a.buffer 0 flens.(fi))
       in
       let len = Array1.dim decompressed_strings in
-      (* Printf.eprintf "len=%d\n\n" len; *)
-      Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
-      str_a.length <- len
+      if len > str_a.length
+      then set_buffer bfs bi decompressed_strings
+      else Array1.(blit decompressed_strings (sub str_a.buffer 0 len))
     ;;
 
     let encode_fragments bfs bi =
       let open Array1 in
-      let str_a = Stateful_buffers.get_buffer bfs bi in
+      let str_a = get_buffer bfs bi in
       let compressed_strings =
         LZ4.Bigbytes.compress (sub str_a.buffer 0 str_a.position)
       in
@@ -226,23 +219,12 @@ module Deserializers = struct
     and deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
 
     let decode_fragments bfs bi flens fi =
-      (* Utils.Debugging.print_int_array "[colinfo::decode]" flens; *)
-      for i = 0 to 1 do
-        (* Printf.eprintf "i=%d\n" i; *)
-        let a = Stateful_buffers.get_buffer bfs (bi + i) in
-        a.length <- flens.(fi + i)
-      done
+      VarcharDeserializer.decode_fragments bfs bi flens fi
     ;;
 
     (* Stateful_buffers.print_buffers "decoded column info" bfs *)
 
-    let encode_fragments bfs bi =
-      for i = 0 to 1 do
-        let a = Stateful_buffers.get_buffer bfs (bi + i) in
-        a.length <- a.position;
-        a.position <- 0
-      done
-    ;;
+    let encode_fragments bfs bi = VarcharDeserializer.encode_fragments bfs bi
   end
 end
 
@@ -261,14 +243,7 @@ module Serializers = struct
       let open Stateful_buffers in
       let a = get_buffer bfs bi in
       set_int64_be a.buffer a.position v;
-      a.position <- a.position + 8;
-      Printf.eprintf
-        "[%s] serializing %Ld -> %d[%d, %d]\n"
-        __FUNCTION__
-        v
-        bi
-        (a.position - 8)
-        (a.position - 1)
+      a.position <- a.position + 8
     ;;
   end
 

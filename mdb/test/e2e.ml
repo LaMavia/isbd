@@ -39,6 +39,7 @@ let test_e2e =
         let cursor = C.create "" |> Result.get_ok in
         TestSerializer.serialize buffer_size cols data cursor;
         cursor |> C.seek 0 |> ignore;
+        Utils.Debugging.print_hex_bytes "Cursor" (C.to_bytes cursor);
         Printf.eprintf
           "c_r ≈ %f\n"
           (float_of_int (C.len cursor) /. float_of_int (max 1 (Data.approx_size data)));
@@ -49,9 +50,11 @@ let test_e2e =
   [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10 ()
   ; test
       ~name:"Small ints"
-      (List.to_seq [ [| `DataInt 1L; `DataInt 2L |]; [| `DataInt 3L; `DataInt 4L |] ])
+      (Seq.init 10 (fun i ->
+         [| `DataInt (Int64.of_int (2 * i)); `DataInt (Int64.of_int @@ ((2 * i) + 1)) |]))
+      (* (List.to_seq [ [| `DataInt 1L; `DataInt 2L |]; [| `DataInt 3L; `DataInt 4L |] ]) *)
       [| "int1", `ColInt; "int2", `ColInt |]
-      ~buffer_size:10
+      ~buffer_size:100
       ()
   ; test
       ~name:"Small varchar"
@@ -71,6 +74,22 @@ let test_e2e =
       [| "name", `ColVarchar; "age", `ColInt |]
       ~buffer_size:20
       ()
+  ; (let n_rows = 1000 in
+     test
+       ~name:"Submission"
+       (Seq.init n_rows (fun i ->
+          [| `DataInt (Int64.of_int (i + 1))
+           ; `DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
+           ; `DataVarchar (Printf.sprintf "Hello %d" i)
+           ; `DataVarchar (List.init (i + 1) (Fun.const ":3") |> String.concat "|")
+          |]))
+       [| "col_int_1", `ColInt
+        ; "col_int_2", `ColInt
+        ; "col_vchar_1", `ColVarchar
+        ; "col_vchar_2", `ColVarchar
+       |]
+       ~buffer_size:(min (n_rows * 16) 16)
+       ())
   ; (let n_cols = 2000
      and n_rows = 500 in
      test

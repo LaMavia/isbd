@@ -23,7 +23,7 @@ let () =
   Arg.parse speclist anon_fun usage_msg;
   let path = List.hd !input_files in
   let cursor = C.create path |> Result.get_ok in
-  let n = 10_000 in
+  let n = 100 in
   match !mode with
   | Serialize ->
     let cols =
