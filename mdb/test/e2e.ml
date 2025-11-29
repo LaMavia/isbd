@@ -76,7 +76,7 @@ let test_e2e =
       ()
   ; (let n_rows = 1000 in
      test
-       ~name:"Submission"
+       ~name:(Printf.sprintf "Submission %d" n_rows)
        (Seq.init n_rows (fun i ->
           [| `DataInt (Int64.of_int (i + 1))
            ; `DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
@@ -88,12 +88,13 @@ let test_e2e =
         ; "col_vchar_1", `ColVarchar
         ; "col_vchar_2", `ColVarchar
        |]
-       ~buffer_size:(min (n_rows * 16) 16)
+       ~buffer_size:(max (n_rows * 4) 16)
+       ~speed:`Slow
        ())
   ; (let n_cols = 2000
      and n_rows = 500 in
      test
-       ~name:(Printf.sprintf "Wide Ints")
+       ~name:(Printf.sprintf "Wide Ints %d×%d" n_rows n_cols)
        (Seq.init n_rows (fun i ->
           Array.init n_cols (fun j -> `DataInt (Int64.of_int @@ (i * (j + 1))))))
        (Array.init n_cols (fun j -> Printf.sprintf "Column%d" j, `ColInt))
