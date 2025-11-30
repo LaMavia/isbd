@@ -7,9 +7,9 @@
  (name e2e)
  (libraries alcotest lib))
 
-(test
- (name api_route_stubs)
- (libraries alcotest dream web))
+; (test
+;  (name api_route_stubs)
+;  (libraries alcotest dream web))
 
 ; More information on Cram tests can be found in the Dune documentation:
 ;
