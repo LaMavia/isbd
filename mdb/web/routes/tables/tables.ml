@@ -1,7 +1,7 @@
 let routes =
   let open Dream in
   let open Utils.Placeholder in
-  [ get "/tables" unimplemented
+  [ get "/tables" Tables_get.handler
   ; scope
       "/table"
       []
