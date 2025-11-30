@@ -9,3 +9,10 @@ val peek_result_opt : id -> ('t, 'r, 's) t -> 'r option
 val pop_result_opt : id -> ('t, 'r, 's) t -> 'r option
 val set_status : id -> 's -> ('t, 'r, 's) t -> unit
 val peek_status_opt : id -> ('t, 'r, 's) t -> 's option
+
+val show
+  :  ?task:('t -> string) option
+  -> ?result:('r -> string) option
+  -> ?status:('s -> string) option
+  -> ('t, 'r, 's) t
+  -> string

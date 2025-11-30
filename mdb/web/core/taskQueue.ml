@@ -53,3 +53,56 @@ let pop_result_opt id q =
 
 let set_status id s q = with_tq q @@ fun q -> Hashtbl.replace q.statuses id s
 let peek_status_opt id q = with_tq q @@ fun q -> Hashtbl.find_opt q.statuses id
+
+let show ?(task = None) ?(result = None) ?(status = None) q =
+  with_tq q
+  @@ fun q ->
+  let statuses_str =
+    let len = Hashtbl.length q.statuses in
+    Option.fold
+      ~none:(Printf.sprintf "(%d)" len)
+      ~some:(fun pp ->
+        Printf.sprintf
+          "(%d) {\n\t\t%s\n}"
+          len
+          (Hashtbl.to_seq q.statuses
+           |> Seq.map (fun (id, t) ->
+             Printf.sprintf "%s -> %s;" (Uuid.to_string id) (pp t))
+           |> List.of_seq
+           |> String.concat "\n\t"))
+      status
+  and queue_str =
+    let len = Queue.length q.queue in
+    Option.fold
+      ~none:(Printf.sprintf "(%d)" len)
+      ~some:(fun pp ->
+        Printf.sprintf
+          "(%d) {\n\t\t%s\n}"
+          len
+          (Queue.to_seq q.queue
+           |> Seq.map (fun (id, t) ->
+             Printf.sprintf "%s -> %s;" (Uuid.to_string id) (pp t))
+           |> List.of_seq
+           |> String.concat "\n\t"))
+      task
+  and results_str =
+    let len = Hashtbl.length q.results in
+    Option.fold
+      ~none:(Printf.sprintf "(%d)" len)
+      ~some:(fun pp ->
+        Printf.sprintf
+          "(%d) {\n\t\t%s\n}"
+          len
+          (Hashtbl.to_seq q.results
+           |> Seq.map (fun (id, t) ->
+             Printf.sprintf "%s -> %s;" (Uuid.to_string id) (pp t))
+           |> List.of_seq
+           |> String.concat "\n\t"))
+      result
+  in
+  Printf.sprintf
+    "Queue {\n\tstatuses=%s;\n\tqueue=%s;\n\tresults=%s;\n}"
+    statuses_str
+    queue_str
+    results_str
+;;
