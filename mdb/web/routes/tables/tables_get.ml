@@ -1,19 +1,16 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
-let table_of_file (f : string) =
-  let uuid_length = 36 in
-  let table_id = String.sub f 0 uuid_length
-  and name = String.sub f uuid_length (String.length f - uuid_length) in
-  Models.ShallowTable.{ name; table_id }
+let shallow_table_of_table_data (td : Metastore.TableData.t) =
+  Models.ShallowTable.{ name = td.name; table_id = Core.Uuid.to_string td.id }
 ;;
 
 let handler (req : Dream.request) =
-  let config = Dream.field req Middleware.AppConfigMiddleware.field |> Option.get in
+  let ms = Dream.field req Middleware.MetastoreMiddleware.field |> Option.get in
   let tables =
-    Sys.readdir config.table_directory
-    |> Array.to_list
-    |> List.filter (Fun.negate @@ String.starts_with ~prefix:".")
-    |> List.map table_of_file
+    ms.tables
+    |> Hashtbl.to_seq_values
+    |> Seq.map shallow_table_of_table_data
+    |> List.of_seq
   in
   [%yojson_of: Models.ShallowTable.t list] tables
   |> Yojson.Safe.to_string

@@ -1,7 +1,7 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
 type raw = { tables : TableData.t list } [@@deriving yojson]
-type t = { tables : (Core.Uuid.t, TableData.t) Hashtbl.t }
+type t = { mutable tables : (Core.Uuid.t, TableData.t) Hashtbl.t }
 
 let t_of_yojson yojson =
   let r = raw_of_yojson yojson in
