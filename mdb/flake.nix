@@ -52,6 +52,7 @@
               unix-errno
               progress
               alcotest
+              uuidm
               legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
