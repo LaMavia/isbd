@@ -171,12 +171,13 @@
       devShells = eachSystem (system:
         let
           legacyPackages = nixpkgs.legacyPackages.${system};
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           ocamlPackages = legacyPackages.ocamlPackages;
         in
         {
           default = legacyPackages.mkShell {
-            packages = (with legacyPackages; [
+
+            packages = (with pkgs; [
               nixpkgs-fmt
               ocamlformat
               fswatch
@@ -187,6 +188,7 @@
               unixtools.xxd
               (callPackage ./packages/ocaml_lz4.nix { })
               bun
+              postman
             ]) ++ (with ocamlPackages; [
               memtrace
               utop
