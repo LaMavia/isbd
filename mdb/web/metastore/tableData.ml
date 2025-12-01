@@ -32,3 +32,8 @@ let yojson_of_t td =
     ; columns = Array.map Models.Column.of_lib td.columns
     }
 ;;
+
+let to_table_schema (td : t) : Models.TableSchema.t =
+  Models.TableSchema.
+    { name = td.name; columns = Array.map Models.Column.of_lib td.columns }
+;;

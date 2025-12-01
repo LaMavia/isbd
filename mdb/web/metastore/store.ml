@@ -19,8 +19,6 @@ let load (config : Core.Config.t) =
   match content with
   | json when String.trim json = "" -> empty config
   | json ->
-    Printf.eprintf "json=«%s»\n" json;
-    flush_all ();
     let r = Yojson.Safe.from_string json |> raw_of_yojson in
     { tables =
         List.length r.tables
@@ -59,3 +57,5 @@ let drop_table id ms =
   Sys.remove file_path;
   Hashtbl.remove ms.tables id
 ;;
+
+let lookup_table id ms = Hashtbl.find_opt ms.tables id
