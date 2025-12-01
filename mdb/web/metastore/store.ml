@@ -40,7 +40,7 @@ let save (config : Core.Config.t) (ms : t) =
 ;;
 
 let get_table_path id ms =
-  String.concat "" [ ms.config.table_directory; "/"; Core.Uuid.to_string id; ".bin" ]
+  Printf.sprintf "%s/%s.bin" ms.config.table_directory (Core.Uuid.to_string id)
 ;;
 
 let create_table id td ms =
@@ -54,4 +54,8 @@ let create_table id td ms =
   Hashtbl.replace ms.tables id td
 ;;
 
-let drop_table id ms = Hashtbl.remove ms.tables id
+let drop_table id ms =
+  let file_path = get_table_path id ms in
+  Sys.remove file_path;
+  Hashtbl.remove ms.tables id
+;;

@@ -5,8 +5,8 @@ let routes =
   ; scope
       "/table"
       []
-      [ get "/:tableId" unimplemented
-      ; delete "/:tableId" unimplemented
+      [ get "/:table_id" unimplemented
+      ; delete "/:table_id" Table.Delete.handler
       ; put "" Table.Put.handler
       ]
   ]
