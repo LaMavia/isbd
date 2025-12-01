@@ -12,3 +12,9 @@ perf.data*
 *.perf
 
 node_modules
+
+tables/*
+results/*
+
+!tables/.*
+!results/.*

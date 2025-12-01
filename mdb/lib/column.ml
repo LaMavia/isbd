@@ -5,6 +5,8 @@ type col =
   | `ColInt
   ]
 
+type t = string * col
+
 let col_constr_of_type = function
   | '\001' -> Option.some `ColInt
   | '\002' -> Option.some `ColVarchar
@@ -221,7 +223,7 @@ module Columns = struct
     ;;
   end
 
-  module ColumnInfoColumn : Column with type t := string * col = struct
+  module ColumnInfoColumn : Column with type t := t = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
