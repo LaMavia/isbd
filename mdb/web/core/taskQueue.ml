@@ -32,29 +32,39 @@ let add_task task s q =
   id
 ;;
 
-let pop_task q =
+let pop_task s q =
   with_tq q
   @@ fun q ->
   while Queue.is_empty q.queue do
     Condition.wait q.nonempty q.lock
   done;
-  Queue.take q.queue
+  let id, t = Queue.take q.queue in
+  Hashtbl.replace q.statuses id s;
+  id, t
 ;;
 
-let add_result id r q = with_tq q @@ fun q -> Hashtbl.add q.results id r
-let peek_result_opt id q = with_tq q @@ fun q -> Hashtbl.find_opt q.results id
+let add_result id r s q =
+  with_tq q
+  @@ fun q ->
+  Hashtbl.replace q.results id r;
+  Hashtbl.replace q.statuses id s
+;;
+
+let peek_result_opt id q =
+  with_tq q @@ fun q -> Hashtbl.find_opt q.results id, Hashtbl.find_opt q.statuses id
+;;
 
 let pop_result_opt id q =
   with_tq q
   @@ fun q ->
   let open Lib.Utils.Mopt in
   let* r = Hashtbl.find_opt q.results id in
+  let* s = Hashtbl.find_opt q.statuses id in
   Hashtbl.remove q.results id;
-  Some r
+  Hashtbl.remove q.statuses id;
+  Some (r, s)
 ;;
 
-let set_status id s q = with_tq q @@ fun q -> Hashtbl.replace q.statuses id s
-let peek_status_opt id q = with_tq q @@ fun q -> Hashtbl.find_opt q.statuses id
 let peek_statuses q = with_tq q @@ fun q -> Hashtbl.to_seq q.statuses
 
 let show ?(task = None) ?(result = None) ?(status = None) q =
