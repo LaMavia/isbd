@@ -27,7 +27,7 @@ let add_task task s q =
   let id = Uuid.v4 ()
   and was_empty = Queue.is_empty q.queue in
   Queue.add (id, task) q.queue;
-  Hashtbl.add q.statuses id s;
+  Hashtbl.replace q.statuses id s;
   if was_empty then Condition.broadcast q.nonempty;
   id
 ;;
