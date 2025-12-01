@@ -7,7 +7,7 @@ let routes =
       []
       [ get "/:tableId" unimplemented
       ; delete "/:tableId" unimplemented
-      ; put "" unimplemented
+      ; put "" Table.Put.handler
       ]
   ]
 ;;

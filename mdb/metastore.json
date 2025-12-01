@@ -1,1 +1,1 @@
-{"tables":[]}
+{"tables":[{"name":"my_table","id":"fc831022-576a-42fb-88b4-60dc16dbbbae","relative_path":"fc831022-576a-42fb-88b4-60dc16dbbbae.bin","columns":[{"name":"col1","type":"INT64"},{"name":"col2","type":"VARCHAR"}]}]}

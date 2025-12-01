@@ -1,1 +1,1 @@
-let () = Dream.run @@ Dream.logger @@ Web.app
+let () = Dream.run @@ Dream.logger @@ Web.Main.app

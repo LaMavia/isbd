@@ -8,5 +8,6 @@ let app =
   AppConfigMiddleware.middleware config
   @@ MetastoreMiddleware.middleware metastore
   @@ TaskQueueMiddleware.middleware tq
+  @@ ErrorMiddleware.middleware
   @@ Routes.router
 ;;
