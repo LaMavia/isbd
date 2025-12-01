@@ -1,5 +1,7 @@
 type id = Uuid.t
 
+let string_of_id = Uuid.to_string
+
 type ('t, 'r, 's) t =
   { queue : (id * 't) Queue.t
   ; results : (id, 'r) Hashtbl.t
@@ -53,6 +55,7 @@ let pop_result_opt id q =
 
 let set_status id s q = with_tq q @@ fun q -> Hashtbl.replace q.statuses id s
 let peek_status_opt id q = with_tq q @@ fun q -> Hashtbl.find_opt q.statuses id
+let peek_statuses q = with_tq q @@ fun q -> Hashtbl.to_seq q.statuses
 
 let show ?(task = None) ?(result = None) ?(status = None) q =
   with_tq q
