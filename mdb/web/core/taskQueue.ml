@@ -1,6 +1,7 @@
 type id = Uuid.t [@@deriving yojson]
 
 let string_of_id = Uuid.to_string
+let id_of_string = Uuid.of_string
 
 type ('t, 'r, 's) t =
   { queue : (id * 't) Queue.t
