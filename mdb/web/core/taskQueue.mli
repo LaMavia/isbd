@@ -2,6 +2,8 @@ type id
 type ('t, 'r, 's) t
 
 val string_of_id : id -> string
+val yojson_of_id : id -> Yojson.Safe.t
+val id_of_yojson : Yojson.Safe.t -> id
 
 (** [create ()] creates an empty task queue.*)
 val create : unit -> ('t, 'r, 's) t

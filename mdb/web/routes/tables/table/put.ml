@@ -1,7 +1,7 @@
 let handler (req : Dream.request) =
   let ms = Dream.field req Middleware.MetastoreMiddleware.field |> Option.get in
   let%lwt body = Dream.body req in
-  let schema = Yojson.Safe.from_string body |> Models.TableSchema.t_of_yojson in
+  let schema = Yojson.Safe.from_string body |> [%of_yojson: Models.TableSchema.t] in
   let id = Core.Uuid.v4 () in
   let td =
     Metastore.TableData.

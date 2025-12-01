@@ -1,4 +1,4 @@
-type id = Uuid.t
+type id = Uuid.t [@@deriving yojson]
 
 let string_of_id = Uuid.to_string
 
