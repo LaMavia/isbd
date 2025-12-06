@@ -7,7 +7,7 @@ let shallow_table_of_table_data (td : Metastore.TableData.t) =
 let handler (req : Dream.request) =
   let ms = Dream.field req Middleware.MetastoreMiddleware.field |> Option.get in
   let tables =
-    ms.tables
+    ms.id_tables
     |> Hashtbl.to_seq_values
     |> Seq.map shallow_table_of_table_data
     |> List.of_seq

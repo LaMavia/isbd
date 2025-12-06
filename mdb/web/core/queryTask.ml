@@ -6,5 +6,9 @@ type err =
   ; details : string
   }
 
-type res_ = { query_definition : Models.QueryDefinition.t }
+type res_ =
+  { query_definition : Models.QueryDefinition.t
+  ; result_id : Uuid.t option
+  }
+
 type result_ = (res_, err) result

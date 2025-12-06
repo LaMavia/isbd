@@ -3,6 +3,7 @@ type ('t, 'r, 's) t
 
 val string_of_id : id -> string
 val id_of_string : string -> id
+val uuid_of_id : id -> Uuid.t
 val yojson_of_id : id -> Yojson.Safe.t
 val id_of_yojson : Yojson.Safe.t -> id
 
