@@ -7,3 +7,7 @@ type problem =
 [@@deriving yojson]
 
 type t = problem list [@@deriving yojson]
+
+exception MultipleProblemsError of t
+
+let make e = MultipleProblemsError e

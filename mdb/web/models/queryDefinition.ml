@@ -8,7 +8,7 @@ module Internal = struct
 end
 
 let t_of_yojson json =
-  Utils.Yj.alt Internal.[ select_query_of_yojson; copy_query_of_yojson ] json
+  WebUtils.Yj.alt Internal.[ select_query_of_yojson; copy_query_of_yojson ] json
 ;;
 
 let yojson_of_t = function

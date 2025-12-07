@@ -12,7 +12,7 @@ module Internal = struct
 end
 
 let t_of_yojson (json : Yojson.Safe.t) =
-  Utils.Yj.alt Internal.[ i64_of_yojson; vc_of_yojson ] json
+  WebUtils.Yj.alt Internal.[ i64_of_yojson; vc_of_yojson ] json
 ;;
 
 let yojson_of_t (v : t) : Yojson.Safe.t =

@@ -1,1 +1,14 @@
-{"tables":[{"name":"my_table","id":"a01aa0b6-001f-4d2d-9bf3-79d75083d092","relative_path":"a01aa0b6-001f-4d2d-9bf3-79d75083d092.bin","columns":[{"name":"col1","type":"INT64"},{"name":"col2","type":"VARCHAR"}]}]}
+{
+  "tables": [
+    {
+      "name": "my_table",
+      "id": "a01aa0b6-001f-4d2d-9bf3-79d75083d092",
+      "relative_path": "a01aa0b6-001f-4d2d-9bf3-79d75083d092.bin",
+      "columns": [
+        { "name": "col1", "type": "INT64" },
+        { "name": "col2", "type": "VARCHAR" }
+      ]
+    }
+  ],
+  "results": []
+}
