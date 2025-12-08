@@ -3,12 +3,16 @@ open Core
 open Models.ExecuteQueryRequest
 open Models.QueryStatus
 
-let process_select ms tq task_id _query_def query =
+let process_select ms tq task_id query_def query =
   let open Models.SelectQuery in
   let open Utils.Let.Opt in
   let open QueryTask in
   match query.table_name with
   | None ->
+    Logger.log
+      `Error
+      "Table %s not found"
+      (Option.fold ~none:"None" ~some:Fun.id query.table_name);
     TaskQueue.add_result
       task_id
       (Error
@@ -29,8 +33,31 @@ let process_select ms tq task_id _query_def query =
          Failed
          tq
      | Some td ->
+       Logger.log `Info "Table lock exists: %b" (Hashtbl.mem ms.locks td.id);
+       flush_all ();
        let- table_lock = Hashtbl.find_opt ms.locks td.id in
-       Mutex.protect table_lock (fun () -> ()))
+       let id = TaskQueue.uuid_of_id task_id in
+       Mutex.protect table_lock (fun () ->
+         Logger.log `Info "Obtained table %s lock" td.name;
+         flush_all ();
+         Metastore.Store.with_read_table td ms
+         @@ fun data ->
+         let data = List.of_seq data in
+         Printf.eprintf "Found %d rows\n" (List.length data);
+         flush_all ();
+         List.to_seq data
+         |> Metastore.Store.create_result
+              Metastore.TableData.
+                { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
+                ; id
+                ; columns = td.columns
+                }
+              ms);
+       TaskQueue.add_result
+         task_id
+         (Ok { query_definition = query_def; result_id = Some id })
+         Completed
+         tq)
 ;;
 
 let process_copy ms tq task_id query =
@@ -84,6 +111,10 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
     (match query_def with
      | QD_SelectQuery query -> process_select ms tq task_id query_def query
      | QD_CopyQuery query -> process_copy ms tq task_id query);
-    Logger.log `Info "DONE"
+    Mutex.protect ms.store_lock
+    @@ fun () ->
+    Metastore.Store.save ms.config ms;
+    Logger.log `Info "DONE";
+    flush_all ()
   done
 ;;

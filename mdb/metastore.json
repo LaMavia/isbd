@@ -3,12 +3,36 @@
     {
       "name": "my_table",
       "id": "a01aa0b6-001f-4d2d-9bf3-79d75083d092",
-      "relative_path": "a01aa0b6-001f-4d2d-9bf3-79d75083d092.bin",
       "columns": [
         { "name": "col1", "type": "INT64" },
         { "name": "col2", "type": "VARCHAR" }
       ]
     }
   ],
-  "results": []
+  "results": [
+    {
+      "name": "f48d6911-f258-4140-b8e1-91f96aa86c78-result",
+      "id": "f48d6911-f258-4140-b8e1-91f96aa86c78",
+      "columns": [
+        { "name": "col1", "type": "INT64" },
+        { "name": "col2", "type": "VARCHAR" }
+      ]
+    },
+    {
+      "name": "712f75e7-f0d6-4209-a7c1-bee293cdb7f9-result",
+      "id": "712f75e7-f0d6-4209-a7c1-bee293cdb7f9",
+      "columns": [
+        { "name": "col1", "type": "INT64" },
+        { "name": "col2", "type": "VARCHAR" }
+      ]
+    },
+    {
+      "name": "27e20951-9cad-4356-9c3e-c0562711fcc3-result",
+      "id": "27e20951-9cad-4356-9c3e-c0562711fcc3",
+      "columns": [
+        { "name": "col1", "type": "INT64" },
+        { "name": "col2", "type": "VARCHAR" }
+      ]
+    }
+  ]
 }

@@ -181,6 +181,8 @@ module Columns = struct
     ;;
 
     let decode_fragments bfs bi flens fi =
+      Printf.eprintf "[%s] decoding lengths\n" __FUNCTION__;
+      flush_all ();
       IntColumn.decode_fragments bfs (bi + 1) flens (fi + 1);
       let total_str_length =
         IntColumn.deserialize_seq bfs (bi + 1)
@@ -188,11 +190,21 @@ module Columns = struct
         |> Int64.to_int
       in
       let str_a = get_buffer bfs bi in
+      Printf.eprintf
+        "[%s] decompressing columns, total_str_length=%d\n"
+        __FUNCTION__
+        total_str_length;
+      flush_all ();
+      let compressed_sub = Array1.sub str_a.buffer 0 flens.(fi) in
+      Printf.eprintf "[%s] DONE subbing compressed columns\n" __FUNCTION__;
+      Utils.Debugging.print_hex_bytes "compressed_sub" compressed_sub;
+      flush_all ();
       let decompressed_strings =
-        LZ4.Bigbytes.decompress
-          ~length:total_str_length
-          (Array1.sub str_a.buffer 0 flens.(fi))
+        LZ4.Bigbytes.decompress ~length:total_str_length compressed_sub
       in
+      Printf.eprintf "[%s] DONE decompressing columns\n" __FUNCTION__;
+      flush_all ();
+      str_a.buffer <- Stateful_buffers.copy_bytes str_a.buffer;
       let len = Array1.dim decompressed_strings in
       if len > str_a.length
       then set_buffer bfs bi decompressed_strings

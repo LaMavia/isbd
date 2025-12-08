@@ -53,6 +53,21 @@ module Internal = struct
       Cursor.truncate cursor;
       Cursor.close cursor)
   ;;
+
+  let with_read ~path_resolver td ms f =
+    let open TableData in
+    Printf.eprintf "[read] reading %s\n" td.name;
+    flush_all ();
+    let path = path_resolver td.id ms in
+    Printf.eprintf "[read] DONE resolving path %s\n" td.name;
+    flush_all ();
+    let cursor = Cursor.create path |> Result.get_ok in
+    Printf.eprintf "[read] DONE creating cursor %s\n" td.name;
+    flush_all ();
+    let res = Deserializer.deserialize cursor |> snd |> f in
+    Cursor.close cursor;
+    res
+  ;;
 end
 
 open Internal
@@ -133,6 +148,24 @@ let create_table id td ms =
   Mutex.protect ms.store_lock @@ fun () -> set_table td ms
 ;;
 
+let create_result td ms stream =
+  let open TableData in
+  Printf.eprintf "Creating result %s\n" td.name;
+  flush_all ();
+  let file_path = resolve_result_path td.id ms in
+  let cursor = Cursor.create file_path |> Result.get_ok in
+  Serializer.serialize Const.buffer_size td.columns stream cursor;
+  Cursor.truncate cursor;
+  Cursor.close cursor;
+  Printf.eprintf "[create_result] obtaining store lock...n";
+  flush_all ();
+  Mutex.protect ms.store_lock
+  @@ fun () ->
+  Printf.eprintf "[create_result] obtained store lock\n";
+  flush_all ();
+  set_result td ms
+;;
+
 let drop_table id ms =
   let open Utils.Let.Opt in
   let- table_lock = Hashtbl.find_opt ms.locks id in
@@ -145,14 +178,10 @@ let drop_table id ms =
     remove_table td.id td.name ms)
 ;;
 
-let read_table td ms =
-  let open TableData in
-  let path = resolve_table_path td.id ms in
-  let cursor = Cursor.create path |> Result.get_ok in
-  Deserializer.deserialize cursor |> snd
-;;
-
 let write_table = write ~path_resolver:resolve_table_path
 let write_result = write ~path_resolver:resolve_result_path
+let with_read_table td ms f = with_read ~path_resolver:resolve_table_path td ms f
+let with_read_result td ms f = with_read ~path_resolver:resolve_result_path td ms f
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
 let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
+let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id

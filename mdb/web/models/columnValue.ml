@@ -20,3 +20,32 @@ let yojson_of_t (v : t) : Yojson.Safe.t =
   | I64 is -> `List (List.map Int64Column.yojson_of_t is)
   | VC ss -> `List (List.map VarcharColumn.yojson_of_t ss)
 ;;
+
+let of_lib_array (col : Lib.Column.col) arr =
+  let list = Array.to_list arr in
+  match col with
+  | `ColInt ->
+    I64
+      (List.map
+         (function
+           | `DataInt i -> i
+           | v ->
+             raise
+               (Failure
+                  (Printf.sprintf
+                     "Expected an INT but got %s instead"
+                     (Lib.Data.Types.to_str v))))
+         list)
+  | `ColVarchar ->
+    VC
+      (List.map
+         (function
+           | `DataVarchar s -> s
+           | v ->
+             raise
+               (Failure
+                  (Printf.sprintf
+                     "Expected an INT but got %s instead"
+                     (Lib.Data.Types.to_str v))))
+         list)
+;;

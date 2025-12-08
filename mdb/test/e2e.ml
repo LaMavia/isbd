@@ -1,5 +1,10 @@
 open Lib
 
+let bytes_of_bigbytes a =
+  let open Bigarray.Array1 in
+  Array.init (dim a) @@ unsafe_get a
+;;
+
 module Testable = struct
   let data_record =
     let open Data in
@@ -40,12 +45,16 @@ let test_e2e =
         TestSerializer.serialize buffer_size cols data cursor;
         cursor |> C.seek 0 |> ignore;
         Utils.Debugging.print_hex_bytes "Cursor" (C.to_bytes cursor);
+        let pre_deser_bytes = C.to_bytes cursor |> bytes_of_bigbytes in
         Printf.eprintf
           "c_r ≈ %f\n"
           (float_of_int (C.len cursor) /. float_of_int (max 1 (Data.approx_size data)));
         let got_cols, got_data = TestDeserializer.deserialize cursor in
+        let post_deser_bytes = C.to_bytes cursor |> bytes_of_bigbytes in
         Alcotest.(check Testable.columns) "same columns" cols got_cols;
-        Alcotest.(check (seq Testable.data_record)) "same records" data got_data )
+        Alcotest.(check (seq Testable.data_record)) "same records" data got_data;
+        Alcotest.(check (array char)) "unchanged cursor" pre_deser_bytes post_deser_bytes
+    )
   in
   [ test ~name:"Empty" Seq.empty [||] ~buffer_size:10 ()
   ; test

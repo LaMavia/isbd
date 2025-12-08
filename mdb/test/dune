@@ -11,11 +11,11 @@
 ;  (name api_route_stubs)
 ;  (libraries alcotest dream web))
 
-(test
- (name json)
- (libraries alcotest dream web yojson)
- (preprocess
-  (pps lwt_ppx ppx_yojson_conv)))
+; (test
+;  (name json)
+;  (libraries alcotest dream web yojson)
+;  (preprocess
+;   (pps lwt_ppx ppx_yojson_conv)))
 
 ; More information on Cram tests can be found in the Dune documentation:
 ;

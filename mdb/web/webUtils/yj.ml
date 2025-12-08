@@ -8,3 +8,19 @@ let alt (fs : ('a -> 'b) list) (v : 'a) : 'b =
   in
   aux fs (Invalid_argument "Empty alternative")
 ;;
+
+let yojson_of_result yojson_of_r yojson_of_e = function
+  | Error e -> `Assoc [ "type", `String "error"; "value", yojson_of_e e ]
+  | Ok r -> `Assoc [ "type", `String "ok"; "value", yojson_of_r r ]
+;;
+
+let result_of_yojson r_of_yojson e_of_yojson = function
+  | `Assoc [ ("type", `String "error"); ("value", e) ] -> Error (e_of_yojson e)
+  | `Assoc [ ("type", `String "ok"); ("value", r) ] -> Ok (r_of_yojson r)
+  | json ->
+    Yojson.json_error
+    @@ Printf.sprintf
+         "Expected ({ \"type\": \"error\", \"value\": _ }|{ \"type\": \"ok\", \"value\": \
+          _ }) but got %s instead"
+         (Yojson.Safe.to_string json)
+;;

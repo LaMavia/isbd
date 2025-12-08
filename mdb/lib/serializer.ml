@@ -1,6 +1,4 @@
 module Make (OC : Cursor.CursorInterface) = struct
-  module OutChunk = Chunk.Make (OC)
-
   let write_columns (logcols : (string * Column.col) array) (output_cursor : OC.t) =
     let open OC in
     let open Stateful_buffers in
@@ -31,7 +29,12 @@ module Make (OC : Cursor.CursorInterface) = struct
     output_cursor
     |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes
-    |> ignore
+    |> ignore;
+    Printf.eprintf
+      "[%s] encoded colinfo into cols_lens=%d, cols_lengths_lens=%d"
+      __FUNCTION__
+      cols_bf.position
+      cols_lengths_bf.position
   ;;
 
   let serialize

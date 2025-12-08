@@ -16,6 +16,12 @@ module Make (IC : Cursor.CursorInterface) = struct
     let cols_bytes = input_cursor |> seek cols_offset |> read cols_lens in
     let cols_lengths_bytes = input_cursor |> read cols_lengths_lens in
     let bfs = of_list [ cols_bytes; cols_lengths_bytes ] in
+    Printf.eprintf
+      "[%s] decoding columns cols_lens=%d, cols_lengths_lens=%d\n"
+      __FUNCTION__
+      cols_lens
+      cols_lengths_lens;
+    flush_all ();
     Column.Columns.ColumnInfoColumn.decode_fragments
       bfs
       0
@@ -25,12 +31,22 @@ module Make (IC : Cursor.CursorInterface) = struct
     and cols_lengths_bf = get_buffer bfs 1 in
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
+    Printf.eprintf
+      "[%s] deserializing column info cols_lens=%d, cols_lengths_lens=%d\n"
+      __FUNCTION__
+      cols_lens
+      cols_lengths_lens;
+    flush_all ();
     let columns = Column.Columns.ColumnInfoColumn.deserialize_seq bfs 0 |> Array.of_seq in
     columns, cols_offset
   ;;
 
   let deserialize (input_cursor : IC.t) =
+    Printf.eprintf "[%s] deserializing\n" __FUNCTION__;
+    flush_all ();
     let logcols, chunks_len = read_columns input_cursor in
+    Printf.eprintf "[%s] done reading columns\n" __FUNCTION__;
+    flush_all ();
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
@@ -63,6 +79,8 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~actual_length:buffer_size
     in
     let rec give_record () =
+      Printf.eprintf "[%s] called give_record\n" __FUNCTION__;
+      flush_all ();
       match Seq.uncons !parsed_record_seq with
       | Option.None when IC.position input_cursor >= chunks_len -> Option.None
       | Option.Some (h, t) ->
