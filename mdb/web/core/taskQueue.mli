@@ -41,6 +41,11 @@ val pop_result_opt : id -> ('t, 'r, 's) t -> ('r * 's) option
 (** [peek_statuses tq] returns all the task statuses in [tq].*)
 val peek_statuses : ('t, 'r, 's) t -> (id * 's) Seq.t
 
+(** [set_status id status tq] stets the status of the task with id [id] to [status]. 
+    If the task doesn't exist, it throws an [Invalid_argument] error.
+    *)
+val set_status : id -> 's -> ('t, 'r, 's) t -> unit
+
 val show
   :  ?task:('t -> string) option
   -> ?result:('r -> string) option

@@ -45,7 +45,6 @@ module Internal = struct
   let write ~path_resolver (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) =
     let open Utils.Let.Opt in
     let output_path = path_resolver td.id ms in
-    Printf.eprintf "Writing to %s (%b)\n" output_path (Hashtbl.mem ms.locks td.id);
     let- output_lock = Hashtbl.find_opt ms.locks td.id in
     Mutex.protect output_lock (fun () ->
       let cursor = Cursor.create output_path |> Result.get_ok in
@@ -56,14 +55,8 @@ module Internal = struct
 
   let with_read ~path_resolver td ms f =
     let open TableData in
-    Printf.eprintf "[read] reading %s\n" td.name;
-    flush_all ();
     let path = path_resolver td.id ms in
-    Printf.eprintf "[read] DONE resolving path %s\n" td.name;
-    flush_all ();
     let cursor = Cursor.create path |> Result.get_ok in
-    Printf.eprintf "[read] DONE creating cursor %s\n" td.name;
-    flush_all ();
     let res = Deserializer.deserialize cursor |> snd |> f in
     Cursor.close cursor;
     res
@@ -150,20 +143,12 @@ let create_table id td ms =
 
 let create_result td ms stream =
   let open TableData in
-  Printf.eprintf "Creating result %s\n" td.name;
-  flush_all ();
   let file_path = resolve_result_path td.id ms in
   let cursor = Cursor.create file_path |> Result.get_ok in
   Serializer.serialize Const.buffer_size td.columns stream cursor;
   Cursor.truncate cursor;
   Cursor.close cursor;
-  Printf.eprintf "[create_result] obtaining store lock...n";
-  flush_all ();
-  Mutex.protect ms.store_lock
-  @@ fun () ->
-  Printf.eprintf "[create_result] obtained store lock\n";
-  flush_all ();
-  set_result td ms
+  Mutex.protect ms.store_lock @@ fun () -> set_result td ms
 ;;
 
 let drop_table id ms =

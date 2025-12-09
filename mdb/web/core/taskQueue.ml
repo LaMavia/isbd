@@ -69,6 +69,16 @@ let pop_result_opt id q =
 
 let peek_statuses q = with_tq q @@ fun q -> Hashtbl.to_seq q.statuses
 
+let set_status id status q =
+  with_tq q
+  @@ fun q ->
+  if Hashtbl.mem q.statuses id
+  then Hashtbl.replace q.statuses id status
+  else
+    raise
+      (Invalid_argument (Printf.sprintf "task with id=%s doesn't exist" (string_of_id id)))
+;;
+
 let show ?(task = None) ?(result = None) ?(status = None) q =
   with_tq q
   @@ fun q ->

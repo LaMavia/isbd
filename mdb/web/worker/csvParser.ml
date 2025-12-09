@@ -22,21 +22,13 @@ let parse_channel ~selector ~columns csv_channel =
   let open Models in
   let aux () =
     try
-      let v =
-        Csv.next csv_channel
-        |> selector
-        |> List.combine columns
-        |> List.map (fun (t, v) ->
-          parse_value t v |> Utils.Unwrap.result ~exc:MultipleProblemsError.make)
-        |> Array.of_list
-      in
-      Array.iter
-        (function
-          | `DataInt d -> Printf.eprintf "DI %Ld " d
-          | `DataVarchar s -> Printf.eprintf "DVC %s " s)
-        v;
-      Printf.eprintf "\n";
-      Option.some v
+      Csv.next csv_channel
+      |> selector
+      |> List.combine columns
+      |> List.map (fun (t, v) ->
+        parse_value t v |> Utils.Unwrap.result ~exc:MultipleProblemsError.make)
+      |> Array.of_list
+      |> Option.some
     with
     | Csv.Failure (row, field, msg) ->
       raise

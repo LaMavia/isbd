@@ -29,12 +29,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     output_cursor
     |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes
-    |> ignore;
-    Printf.eprintf
-      "[%s] encoded colinfo into cols_lens=%d, cols_lengths_lens=%d"
-      __FUNCTION__
-      cols_bf.position
-      cols_lengths_bf.position
+    |> ignore
   ;;
 
   let serialize

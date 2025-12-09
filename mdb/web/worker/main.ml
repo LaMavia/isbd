@@ -33,18 +33,13 @@ let process_select ms tq task_id query_def query =
          Failed
          tq
      | Some td ->
-       Logger.log `Info "Table lock exists: %b" (Hashtbl.mem ms.locks td.id);
-       flush_all ();
        let- table_lock = Hashtbl.find_opt ms.locks td.id in
        let id = TaskQueue.uuid_of_id task_id in
        Mutex.protect table_lock (fun () ->
-         Logger.log `Info "Obtained table %s lock" td.name;
-         flush_all ();
          Metastore.Store.with_read_table td ms
          @@ fun data ->
+         TaskQueue.set_status task_id Running tq;
          let data = List.of_seq data in
-         Printf.eprintf "Found %d rows\n" (List.length data);
-         flush_all ();
          List.to_seq data
          |> Metastore.Store.create_result
               Metastore.TableData.
@@ -91,6 +86,7 @@ let process_copy ms tq task_id query =
         Failed
         tq
     | Some td ->
+      TaskQueue.set_status task_id Running tq;
       let column_types = td.columns |> Array.to_list |> List.map snd in
       CsvParser.read_csv ~has_header:query.does_csv_contain_header csv_path
       |> CsvParser.parse_channel ~selector:Fun.id ~columns:column_types
@@ -105,15 +101,12 @@ let process_copy ms tq task_id query =
 let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
   Logger.log `Info "Spawned";
   while true do
-    let task_id, task = TaskQueue.pop_task Running tq in
+    let task_id, task = TaskQueue.pop_task Planning tq in
     let query_def = task.request.query_definition in
     Logger.log `Info "Popped task: %s" (TaskQueue.string_of_id task_id);
     (match query_def with
      | QD_SelectQuery query -> process_select ms tq task_id query_def query
      | QD_CopyQuery query -> process_copy ms tq task_id query);
-    Mutex.protect ms.store_lock
-    @@ fun () ->
-    Metastore.Store.save ms.config ms;
     Logger.log `Info "DONE";
     flush_all ()
   done
