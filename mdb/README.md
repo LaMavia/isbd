@@ -4,7 +4,7 @@ Przykładowe uruchomienie dockera
 
 ```sh
 make docker
-docker run -d --volume ./data:/data -p 8080:80 zs438730:latest
+docker run -d -v ./data:/data -v persist:/persist -p 8080:80 zs438730:latest
 ```
 
 # Lokalnie
