@@ -73,7 +73,7 @@ let empty config =
 ;;
 
 let load (config : Config.t) =
-  if not (Sys.is_regular_file config.metastore_path)
+  if not (Sys.file_exists config.metastore_path)
   then empty config
   else (
     let ic = open_in config.metastore_path in
