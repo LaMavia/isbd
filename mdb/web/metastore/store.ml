@@ -106,7 +106,7 @@ let load (config : Config.t) =
 
 let save (ms : t) =
   let ms_json = yojson_of_t ms |> Yojson.Safe.to_string in
-  let ms_fd = Unix.openfile ms.config.metastore_path [ O_WRONLY ] 0o640 in
+  let ms_fd = Unix.openfile ms.config.metastore_path [ O_WRONLY; O_CREAT ] 0o640 in
   Fun.protect ~finally:(fun () -> Unix.close ms_fd)
   @@ fun () ->
   Unix.single_write_substring ms_fd ms_json 0 (String.length ms_json) |> ignore
