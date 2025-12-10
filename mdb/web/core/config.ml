@@ -22,6 +22,6 @@ let of_env () =
   assert (is_directory self.table_directory);
   assert (is_directory self.result_directory);
   assert (is_directory self.data_directory);
-  assert (is_regular_file self.metastore_path);
+  (* allow metastore to not exist yet *)
   self
 ;;

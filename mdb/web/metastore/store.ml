@@ -73,32 +73,35 @@ let empty config =
 ;;
 
 let load (config : Config.t) =
-  let ic = open_in config.metastore_path in
-  Fun.protect ~finally:(fun () -> close_in_noerr ic)
-  @@ fun () ->
-  let content = really_input_string ic (in_channel_length ic) in
-  match content with
-  | json when String.trim json = "" -> empty config
-  | json ->
-    let r = Yojson.Safe.from_string json |> raw_of_yojson in
-    let tables_len = List.length r.tables in
-    let ms =
-      { id_tables = Hashtbl.create ~random:true tables_len
-      ; name_tables = Hashtbl.create ~random:true tables_len
-      ; id_results = Hashtbl.create ~random:true 0
-      ; locks = Hashtbl.create ~random:true tables_len
-      ; store_lock = Mutex.create ()
-      ; config
-      }
-    in
-    List.iter
-      TableData.(
-        fun t ->
-          Hashtbl.replace ms.id_tables t.id t;
-          Hashtbl.replace ms.name_tables t.name t;
-          Hashtbl.replace ms.locks t.id (Mutex.create ()))
-      r.tables;
-    ms
+  if not (Sys.is_regular_file config.metastore_path)
+  then empty config
+  else (
+    let ic = open_in config.metastore_path in
+    Fun.protect ~finally:(fun () -> close_in_noerr ic)
+    @@ fun () ->
+    let content = really_input_string ic (in_channel_length ic) in
+    match content with
+    | json when String.trim json = "" -> empty config
+    | json ->
+      let r = Yojson.Safe.from_string json |> raw_of_yojson in
+      let tables_len = List.length r.tables in
+      let ms =
+        { id_tables = Hashtbl.create ~random:true tables_len
+        ; name_tables = Hashtbl.create ~random:true tables_len
+        ; id_results = Hashtbl.create ~random:true 0
+        ; locks = Hashtbl.create ~random:true tables_len
+        ; store_lock = Mutex.create ()
+        ; config
+        }
+      in
+      List.iter
+        TableData.(
+          fun t ->
+            Hashtbl.replace ms.id_tables t.id t;
+            Hashtbl.replace ms.name_tables t.name t;
+            Hashtbl.replace ms.locks t.id (Mutex.create ()))
+        r.tables;
+      ms)
 ;;
 
 let save (ms : t) =
