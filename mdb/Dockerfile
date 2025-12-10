@@ -5,7 +5,7 @@ ENV RESULT_DIRECTORY="/results"
 ENV METASTORE_PATH="/persist/metastore.json"
 ENV DATA_DIRECTORY="/data"
 
-RUN mkdir /results
+RUN mkdir /results /persist/tables
 
 COPY . /app
 WORKDIR /app
