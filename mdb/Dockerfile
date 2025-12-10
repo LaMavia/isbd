@@ -1,11 +1,11 @@
 FROM nixos/nix:latest
 
-ENV TABLE_DIRECTORY="/persist/tables" 
+ENV TABLE_DIRECTORY="/mdb_data" 
 ENV RESULT_DIRECTORY="/results" 
-ENV METASTORE_PATH="/persist/metastore.json"
+ENV METASTORE_PATH="/mdb_data/metastore.json"
 ENV DATA_DIRECTORY="/data"
 
-RUN mkdir /results /persist/tables
+RUN mkdir /results 
 
 COPY . /app
 WORKDIR /app
