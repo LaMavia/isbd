@@ -4,8 +4,6 @@ module Make (IC : Cursor.CursorInterface) = struct
   open Bigarray
 
   let read_columns (input_cursor : IC.t) =
-    Printf.eprintf "reading columns...\n";
-    flush_all ();
     let offsets_len = 16
     and input_len = len input_cursor in
     let offset_bytes =
@@ -28,14 +26,10 @@ module Make (IC : Cursor.CursorInterface) = struct
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
     let columns = Column.Columns.ColumnInfoColumn.deserialize_seq bfs 0 |> Array.of_seq in
-    Printf.eprintf "read columns\n";
-    flush_all ();
     columns, cols_offset
   ;;
 
   let deserialize (input_cursor : IC.t) =
-    Printf.eprintf "in deserialize\n";
-    flush_all ();
     let logcols, chunks_len = read_columns input_cursor in
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
@@ -69,8 +63,6 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~actual_length:buffer_size
     in
     let rec give_record () =
-      Printf.eprintf "calling give_record\n";
-      flush_all ();
       match Seq.uncons !parsed_record_seq with
       | Option.None when IC.position input_cursor >= chunks_len -> Option.None
       | Option.Some (h, t) ->
@@ -130,8 +122,6 @@ module Make (IC : Cursor.CursorInterface) = struct
         empty bfs;
         give_record ()
     in
-    Printf.eprintf "returning seq\n";
-    flush_all ();
     logcols, Seq.of_dispenser give_record
   ;;
 end

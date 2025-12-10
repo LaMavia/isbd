@@ -21,8 +21,6 @@ let parse_value (type_ : col) value =
 let parse_channel ~selector ~columns csv_channel =
   let aux () =
     try
-      Logger.log `Debug "parsing...";
-      flush_all ();
       Csv.next csv_channel
       |> Array.of_list
       |> selector
@@ -39,20 +37,11 @@ let parse_channel ~selector ~columns csv_channel =
            }
     | End_of_file -> None
   in
-  Logger.log `Debug "[%s] creating seq" __FUNCTION__;
-  flush_all ();
   Seq.of_dispenser aux
 ;;
 
 let read_csv ~has_header path =
-  Logger.log `Debug "[%s] path=%s" __FUNCTION__ path;
-  flush_all ();
-  let cin =
-    Unix.openfile path [ O_RDONLY ] 0o640
-    |> Unix.in_channel_of_descr
-    |> Csv.of_channel ~has_header
-  in
-  Logger.log `Debug "opened csv";
-  flush_all ();
-  cin
+  Unix.openfile path [ O_RDONLY ] 0o640
+  |> Unix.in_channel_of_descr
+  |> Csv.of_channel ~has_header
 ;;

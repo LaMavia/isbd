@@ -50,8 +50,6 @@ module Internal = struct
 
   let with_read path f =
     let cursor = Cursor.create path |> Result.get_ok in
-    Printf.eprintf "Created cursor for %s\n" path;
-    flush_all ();
     let res = Deserializer.deserialize cursor |> snd |> f in
     Cursor.close cursor;
     res
@@ -197,11 +195,7 @@ let append_table td ms stream =
   let open TableData in
   let temp_path = resolve_temp_path td.id ms in
   let original_path = resolve_table_path td.id ms in
-  Printf.eprintf "calling with_read %s\n" original_path;
-  flush_all ();
   with_read original_path (fun og_data ->
-    Printf.eprintf "inside with_read %s\n" original_path;
-    flush_all ();
     let cursor = Cursor.create temp_path |> Result.get_ok in
     Serializer.serialize Const.buffer_size td.columns (Seq.append og_data stream) cursor;
     Cursor.truncate cursor;

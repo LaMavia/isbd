@@ -60,9 +60,7 @@ let make_copy_selector td query =
   let open Metastore.TableData in
   let message = "Destination column error" in
   match query.destination_columns with
-  | None ->
-    Logger.log `Debug "[%s] Returning id selector" __FUNCTION__;
-    Ok Fun.id
+  | None -> Ok Fun.id
   | Some mappings ->
     if Array.length mappings != Array.length td.columns
     then Error { message; details = "Invalid number of destination columns" }
@@ -77,9 +75,6 @@ let make_copy_selector td query =
           |> Seq.map (fun (i, c) -> fst c, i)
           |> Hashtbl.of_seq
         in
-        Hashtbl.to_seq table_column_indices
-        |> Seq.iter (fun (k, i) -> Logger.log `Debug "k=%s, i=%d" k i);
-        flush_all ();
         (match
            Array.find_opt (Fun.negate (Hashtbl.mem table_column_indices)) mappings
          with
@@ -87,18 +82,7 @@ let make_copy_selector td query =
            Error { message; details = Printf.sprintf "Invalid destination column %s" col }
          | None ->
            let permutation = Array.map (Hashtbl.find table_column_indices) mappings in
-           Logger.log
-             `Debug
-             "permutation: %s"
-             (String.concat ", " (Array.to_list permutation |> List.map string_of_int));
-           flush_all ();
-           Result.ok
-           @@ fun csv_row ->
-           Logger.log `Debug "called selector";
-           flush_all ();
-           let r = Array.map (Array.get csv_row) permutation in
-           Array.iteri (fun i c -> Logger.log `Debug "select result: %d -> %s" i c) r;
-           r))
+           Result.ok @@ fun csv_row -> Array.map (Array.get csv_row) permutation))
 ;;
 
 let process_copy ms tq task_id query =
@@ -127,13 +111,9 @@ let process_copy ms tq task_id query =
       (match make_copy_selector td query with
        | Error e -> error_handler e
        | Ok selector ->
-         Logger.log `Debug "Built selector";
-         flush_all ();
          CsvParser.read_csv ~has_header:query.does_csv_contain_header csv_path
          |> CsvParser.parse_channel ~selector ~columns:column_types
          |> Metastore.Store.append_table td ms;
-         Logger.log `Debug "Appended to table";
-         flush_all ();
          TaskQueue.add_result
            task_id
            (Ok { query_definition = QD_CopyQuery query; result_id = None })
@@ -147,7 +127,7 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
   while true do
     let task_id, task = TaskQueue.pop_task Planning tq in
     let query_def = task.request.query_definition in
-    Logger.log `Info "Popped task: %s" (TaskQueue.string_of_id task_id);
+    Logger.log `Info "Starting task: %s" (TaskQueue.string_of_id task_id);
     (try
        match query_def with
        | QD_SelectQuery query -> process_select ms tq task_id query_def query
