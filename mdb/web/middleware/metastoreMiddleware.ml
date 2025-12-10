@@ -7,7 +7,6 @@ let metastore_update_field : bool Dream.field =
 let mark_dirty req = Dream.set_field req metastore_update_field true
 
 let middleware ms handler req =
-  let config = Dream.field req AppConfigMiddleware.field |> Option.get in
   Dream.set_field req field ms;
   Lwt.finalize
     (fun () -> handler req)
@@ -15,6 +14,6 @@ let middleware ms handler req =
        let should_save =
          Dream.field req metastore_update_field |> Option.value ~default:false
        in
-       if should_save then Metastore.Store.save config ms;
+       if should_save then Metastore.Store.save ms;
        Lwt.return ())
 ;;

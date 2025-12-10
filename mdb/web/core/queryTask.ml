@@ -10,6 +10,8 @@ type err =
   }
 [@@deriving yojson]
 
+exception QueryTaskError of err
+
 type res_ =
   { query_definition : Models.QueryDefinition.t
   ; result_id : Uuid.t option
@@ -17,3 +19,5 @@ type res_ =
 [@@deriving yojson]
 
 type result_ = (res_, err) result [@@deriving yojson]
+
+let make_error e = QueryTaskError e

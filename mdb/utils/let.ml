@@ -12,4 +12,5 @@ module Res = struct
   let ( let- ) o f = iter f o
   let ( let+ ) o f = map f o
   let ( let* ) o f = bind f o
+  let handler err_handler o f = fold ~error:err_handler ~ok:f o
 end

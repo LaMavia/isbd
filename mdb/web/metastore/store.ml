@@ -1,11 +1,7 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 open Core
 
-type raw =
-  { tables : TableData.t list
-  ; results : TableData.t list
-  }
-[@@deriving yojson]
+type raw = { tables : TableData.t list } [@@deriving yojson]
 
 type t =
   { config : Config.t
@@ -54,6 +50,8 @@ module Internal = struct
 
   let with_read path f =
     let cursor = Cursor.create path |> Result.get_ok in
+    Printf.eprintf "Created cursor for %s\n" path;
+    flush_all ();
     let res = Deserializer.deserialize cursor |> snd |> f in
     Cursor.close cursor;
     res
@@ -63,10 +61,7 @@ end
 open Internal
 
 let yojson_of_t ms =
-  yojson_of_raw
-    { tables = Hashtbl.to_seq_values ms.id_tables |> List.of_seq
-    ; results = Hashtbl.to_seq_values ms.id_results |> List.of_seq
-    }
+  yojson_of_raw { tables = Hashtbl.to_seq_values ms.id_tables |> List.of_seq }
 ;;
 
 let empty config =
@@ -81,18 +76,19 @@ let empty config =
 
 let load (config : Config.t) =
   let ic = open_in config.metastore_path in
+  Fun.protect ~finally:(fun () -> close_in_noerr ic)
+  @@ fun () ->
   let content = really_input_string ic (in_channel_length ic) in
   match content with
   | json when String.trim json = "" -> empty config
   | json ->
     let r = Yojson.Safe.from_string json |> raw_of_yojson in
     let tables_len = List.length r.tables in
-    let results_len = List.length r.results in
     let ms =
       { id_tables = Hashtbl.create ~random:true tables_len
       ; name_tables = Hashtbl.create ~random:true tables_len
-      ; id_results = Hashtbl.create ~random:true results_len
-      ; locks = Hashtbl.create ~random:true (tables_len + results_len)
+      ; id_results = Hashtbl.create ~random:true 0
+      ; locks = Hashtbl.create ~random:true tables_len
       ; store_lock = Mutex.create ()
       ; config
       }
@@ -104,17 +100,15 @@ let load (config : Config.t) =
           Hashtbl.replace ms.name_tables t.name t;
           Hashtbl.replace ms.locks t.id (Mutex.create ()))
       r.tables;
-    List.iter
-      TableData.(
-        fun r ->
-          Hashtbl.replace ms.id_results r.id r;
-          Hashtbl.replace ms.locks r.id (Mutex.create ()))
-      r.results;
     ms
 ;;
 
-let save (config : Config.t) (ms : t) =
-  yojson_of_t ms |> Yojson.Safe.to_file config.metastore_path
+let save (ms : t) =
+  let ms_json = yojson_of_t ms |> Yojson.Safe.to_string in
+  let ms_fd = Unix.openfile ms.config.metastore_path [ O_WRONLY ] 0o640 in
+  Fun.protect ~finally:(fun () -> Unix.close ms_fd)
+  @@ fun () ->
+  Unix.single_write_substring ms_fd ms_json 0 (String.length ms_json) |> ignore
 ;;
 
 let resolve_table_path id ms =
@@ -158,14 +152,37 @@ let create_result td ms stream =
 
 let drop_table id ms =
   let open Utils.Let.Opt in
-  let- table_lock = Hashtbl.find_opt ms.locks id in
   Mutex.protect ms.store_lock (fun () ->
+    let- table_lock = Hashtbl.find_opt ms.locks id in
     Mutex.protect table_lock
     @@ fun () ->
     let- td = Hashtbl.find_opt ms.id_tables id in
     let file_path = resolve_table_path id ms in
     Sys.remove file_path;
     remove_table td.id td.name ms)
+;;
+
+let drop_result id ms =
+  let open Utils.Let.Opt in
+  Mutex.protect ms.store_lock
+  @@ fun () ->
+  let- result_lock = Hashtbl.find_opt ms.locks id in
+  Mutex.protect result_lock
+  @@ fun () ->
+  let- td = Hashtbl.find_opt ms.id_results id in
+  let file_path = resolve_result_path id ms in
+  Sys.remove file_path;
+  remove_result td.id ms
+;;
+
+let drop_all_results ms =
+  ms.id_results
+  |> Hashtbl.to_seq_values
+  |> Seq.iter (fun td ->
+    let open TableData in
+    resolve_result_path td.id ms |> Sys.remove;
+    Hashtbl.remove ms.locks td.id);
+  Hashtbl.reset ms.id_results
 ;;
 
 let write_table td ms = write (resolve_table_path TableData.(td.id) ms) td ms
@@ -180,7 +197,11 @@ let append_table td ms stream =
   let open TableData in
   let temp_path = resolve_temp_path td.id ms in
   let original_path = resolve_table_path td.id ms in
+  Printf.eprintf "calling with_read %s\n" original_path;
+  flush_all ();
   with_read original_path (fun og_data ->
+    Printf.eprintf "inside with_read %s\n" original_path;
+    flush_all ();
     let cursor = Cursor.create temp_path |> Result.get_ok in
     Serializer.serialize Const.buffer_size td.columns (Seq.append og_data stream) cursor;
     Cursor.truncate cursor;

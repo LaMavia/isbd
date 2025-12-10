@@ -1,10 +1,11 @@
+open Middleware
+
 let routes =
   let open Dream in
   [ get "/system/info" (fun req ->
       let open Models.SystemInformation in
-      let open Middleware.UptimeMiddleware in
       let uptime =
-        Dream.field req field
+        field req UptimeMiddleware.field
         |> Utils.Unwrap.option ~message:"Expected uptime middleware to be set"
       in
       { author = "Zuzanna Surowiec"
