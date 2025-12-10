@@ -48,13 +48,10 @@
               lwt
               lwt_ppx
               dream
-              memtrace
-              unix-errno
-              progress
               alcotest
               uuidm
               csv
-              legacyPackages.libunwind
+              # legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
             ];
