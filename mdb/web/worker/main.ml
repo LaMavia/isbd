@@ -90,7 +90,7 @@ let process_copy ms tq task_id query =
       let column_types = td.columns |> Array.to_list |> List.map snd in
       CsvParser.read_csv ~has_header:query.does_csv_contain_header csv_path
       |> CsvParser.parse_channel ~selector:Fun.id ~columns:column_types
-      |> Metastore.Store.write_table td ms;
+      |> Metastore.Store.append_table td ms;
       TaskQueue.add_result
         task_id
         (Ok { query_definition = QD_CopyQuery query; result_id = None })

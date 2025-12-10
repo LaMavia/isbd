@@ -42,9 +42,8 @@ module Internal = struct
 
   let remove_result id ms = Hashtbl.remove ms.id_results id
 
-  let write ~path_resolver (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) =
+  let write output_path (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) =
     let open Utils.Let.Opt in
-    let output_path = path_resolver td.id ms in
     let- output_lock = Hashtbl.find_opt ms.locks td.id in
     Mutex.protect output_lock (fun () ->
       let cursor = Cursor.create output_path |> Result.get_ok in
@@ -53,9 +52,7 @@ module Internal = struct
       Cursor.close cursor)
   ;;
 
-  let with_read ~path_resolver td ms f =
-    let open TableData in
-    let path = path_resolver td.id ms in
+  let with_read path f =
     let cursor = Cursor.create path |> Result.get_ok in
     let res = Deserializer.deserialize cursor |> snd |> f in
     Cursor.close cursor;
@@ -128,6 +125,14 @@ let resolve_result_path id ms =
   Printf.sprintf "%s/%s.bin" ms.config.result_directory (Uuid.to_string id)
 ;;
 
+let resolve_temp_path id ms =
+  Printf.sprintf
+    "%s/%s_temp_%s.bin"
+    ms.config.table_directory
+    (Uuid.to_string id)
+    Uuid.(v4 () |> to_string)
+;;
+
 let resolve_data_path relative_path ms =
   Printf.sprintf "%s/%s" ms.config.data_directory relative_path
 ;;
@@ -163,10 +168,23 @@ let drop_table id ms =
     remove_table td.id td.name ms)
 ;;
 
-let write_table = write ~path_resolver:resolve_table_path
-let write_result = write ~path_resolver:resolve_result_path
-let with_read_table td ms f = with_read ~path_resolver:resolve_table_path td ms f
-let with_read_result td ms f = with_read ~path_resolver:resolve_result_path td ms f
+let write_table td ms = write (resolve_table_path TableData.(td.id) ms) td ms
+let write_result td ms = write (resolve_result_path TableData.(td.id) ms) td ms
+let with_read_table td ms f = with_read (resolve_table_path TableData.(td.id) ms) f
+let with_read_result td ms f = with_read (resolve_result_path TableData.(td.id) ms) f
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
 let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
 let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id
+
+let append_table td ms stream =
+  let open TableData in
+  let temp_path = resolve_temp_path td.id ms in
+  let original_path = resolve_table_path td.id ms in
+  with_read original_path (fun og_data ->
+    let cursor = Cursor.create temp_path |> Result.get_ok in
+    Serializer.serialize Const.buffer_size td.columns (Seq.append og_data stream) cursor;
+    Cursor.truncate cursor;
+    Cursor.close cursor);
+  let output_lock = Hashtbl.find ms.locks td.id in
+  Mutex.protect output_lock @@ fun () -> Unix.rename temp_path original_path
+;;
