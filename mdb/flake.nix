@@ -43,12 +43,15 @@
 
             buildInputs = with ocamlPackages; [
               # OCaml package dependencies go here.
-              ppx_deriving_yojson
-              legacyPackages.libunwind
-              memtrace
-              unix-errno
-              progress
+              ppx_yojson_conv
+              yojson
+              lwt
+              lwt_ppx
+              dream
               alcotest
+              uuidm
+              csv
+              # legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
             ];
@@ -166,12 +169,13 @@
       devShells = eachSystem (system:
         let
           legacyPackages = nixpkgs.legacyPackages.${system};
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           ocamlPackages = legacyPackages.ocamlPackages;
         in
         {
           default = legacyPackages.mkShell {
-            packages = (with legacyPackages; [
+
+            packages = (with pkgs; [
               nixpkgs-fmt
               ocamlformat
               fswatch
@@ -182,6 +186,7 @@
               unixtools.xxd
               (callPackage ./packages/ocaml_lz4.nix { })
               bun
+              postman
             ]) ++ (with ocamlPackages; [
               memtrace
               utop

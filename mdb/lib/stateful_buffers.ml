@@ -94,6 +94,13 @@ let blit_big_bytes src dist =
   dist.position <- dist.position + len
 ;;
 
+let copy_bytes a =
+  let open Array1 in
+  let a' = create_bytes (dim a) in
+  blit a a';
+  a'
+;;
+
 let blit src_bfs dist_bfs = Array.iter2 blit_big_bytes src_bfs dist_bfs
 
 let free bfs =

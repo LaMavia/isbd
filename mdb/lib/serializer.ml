@@ -1,6 +1,4 @@
 module Make (OC : Cursor.CursorInterface) = struct
-  module OutChunk = Chunk.Make (OC)
-
   let write_columns (logcols : (string * Column.col) array) (output_cursor : OC.t) =
     let open OC in
     let open Stateful_buffers in

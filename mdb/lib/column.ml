@@ -5,6 +5,8 @@ type col =
   | `ColInt
   ]
 
+type t = string * col
+
 let col_constr_of_type = function
   | '\001' -> Option.some `ColInt
   | '\002' -> Option.some `ColVarchar
@@ -186,11 +188,11 @@ module Columns = struct
         |> Int64.to_int
       in
       let str_a = get_buffer bfs bi in
+      let compressed_sub = Array1.sub str_a.buffer 0 flens.(fi) in
       let decompressed_strings =
-        LZ4.Bigbytes.decompress
-          ~length:total_str_length
-          (Array1.sub str_a.buffer 0 flens.(fi))
+        LZ4.Bigbytes.decompress ~length:total_str_length compressed_sub
       in
+      str_a.buffer <- Stateful_buffers.copy_bytes str_a.buffer;
       let len = Array1.dim decompressed_strings in
       if len > str_a.length
       then set_buffer bfs bi decompressed_strings
@@ -221,7 +223,7 @@ module Columns = struct
     ;;
   end
 
-  module ColumnInfoColumn : Column with type t := string * col = struct
+  module ColumnInfoColumn : Column with type t := t = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
