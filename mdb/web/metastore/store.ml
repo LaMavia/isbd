@@ -38,20 +38,31 @@ module Internal = struct
 
   let remove_result id ms = Hashtbl.remove ms.id_results id
 
-  let write output_path (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) =
-    let open Utils.Let.Opt in
-    let- output_lock = Hashtbl.find_opt ms.locks td.id in
-    Mutex.protect output_lock (fun () ->
-      let cursor = Cursor.create output_path |> Result.get_ok in
-      Serializer.serialize Const.buffer_size td.columns stream cursor;
-      Cursor.truncate cursor;
-      Cursor.close cursor)
-  ;;
+  (* let write output_dir (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) = *)
+  (*   let open Utils.Let.Opt in *)
+  (*   let- output_lock = Hashtbl.find_opt ms.locks td.id in *)
+  (*   Mutex.protect output_lock (fun () -> *)
+  (*     let cursor = Cursor.create output_dir |> Result.get_ok in *)
+  (*     Serializer.serialize Const.buffer_size td.columns stream cursor; *)
+  (*     Cursor.truncate cursor; *)
+  (*     Cursor.close cursor) *)
+  (* ;; *)
 
-  let with_read path f =
-    let cursor = Cursor.create path |> Result.get_ok in
-    let res = Deserializer.deserialize cursor |> snd |> f in
-    Cursor.close cursor;
+  let with_read ~resolver td ms f =
+    let open TableData in
+    let cursors =
+      List.map
+        (fun file_id -> Cursor.create (resolver td.id file_id ms) |> Result.get_ok)
+        td.files
+    in
+    let res =
+      cursors
+      |> List.map (fun cursor -> Deserializer.deserialize cursor |> snd)
+      |> List.to_seq
+      |> Seq.concat
+      |> f
+    in
+    List.iter Cursor.close cursors;
     res
   ;;
 end
@@ -106,18 +117,28 @@ let load (config : Config.t) =
 
 let save (ms : t) =
   let ms_json = yojson_of_t ms |> Yojson.Safe.to_string in
-  let ms_fd = Unix.openfile ms.config.metastore_path [ O_WRONLY; O_CREAT ] 0o640 in
+  let ms_fd =
+    Unix.openfile ms.config.metastore_path [ O_WRONLY; O_CREAT; O_TRUNC ] 0o640
+  in
   Fun.protect ~finally:(fun () -> Unix.close ms_fd)
   @@ fun () ->
   Unix.single_write_substring ms_fd ms_json 0 (String.length ms_json) |> ignore
 ;;
 
-let resolve_table_path id ms =
-  Printf.sprintf "%s/%s.bin" ms.config.table_directory (Uuid.to_string id)
+let resolve_table_directory tid ms =
+  Printf.sprintf "%s/%s" ms.config.table_directory (Uuid.to_string tid)
 ;;
 
-let resolve_result_path id ms =
-  Printf.sprintf "%s/%s.bin" ms.config.result_directory (Uuid.to_string id)
+let resolve_result_directory rid ms =
+  Printf.sprintf "%s/%s" ms.config.result_directory (Uuid.to_string rid)
+;;
+
+let resolve_table_path tid sid ms =
+  Printf.sprintf "%s/%s.bin" (resolve_table_directory tid ms) (Uuid.to_string sid)
+;;
+
+let resolve_result_path rid sid ms =
+  Printf.sprintf "%s/%s.bin" (resolve_result_directory rid ms) (Uuid.to_string sid)
 ;;
 
 let resolve_temp_path id ms =
@@ -132,23 +153,26 @@ let resolve_data_path relative_path ms =
   Printf.sprintf "%s/%s" ms.config.data_directory relative_path
 ;;
 
-let create_table id td ms =
-  let file_path = resolve_table_path id ms in
-  let cursor = Cursor.create file_path |> Result.get_ok in
-  Serializer.serialize 0 TableData.(td.columns) Seq.empty cursor;
-  Cursor.truncate cursor;
-  Cursor.close cursor;
-  Mutex.protect ms.store_lock @@ fun () -> set_table td ms
+let create_table _id td ms =
+  Mutex.protect ms.store_lock
+  @@ fun () ->
+  Sys.mkdir (resolve_table_directory TableData.(td.id) ms) 0o777;
+  set_table td ms
 ;;
 
 let create_result td ms stream =
   let open TableData in
-  let file_path = resolve_result_path td.id ms in
+  Sys.mkdir (resolve_result_directory td.id ms) 0o777;
+  let file_id = Uuid.v4 () in
+  let file_path = resolve_result_path td.id file_id ms in
   let cursor = Cursor.create file_path |> Result.get_ok in
   Serializer.serialize Const.buffer_size td.columns stream cursor;
   Cursor.truncate cursor;
   Cursor.close cursor;
-  Mutex.protect ms.store_lock @@ fun () -> set_result td ms
+  Mutex.protect ms.store_lock
+  @@ fun () ->
+  td.files <- file_id :: td.files;
+  set_result td ms
 ;;
 
 let drop_table id ms =
@@ -158,8 +182,8 @@ let drop_table id ms =
     Mutex.protect table_lock
     @@ fun () ->
     let- td = Hashtbl.find_opt ms.id_tables id in
-    let file_path = resolve_table_path id ms in
-    Sys.remove file_path;
+    let dir_path = resolve_table_directory id ms in
+    WebUtils.File.rm_rec dir_path;
     remove_table td.id td.name ms)
 ;;
 
@@ -171,8 +195,8 @@ let drop_result id ms =
   Mutex.protect result_lock
   @@ fun () ->
   let- td = Hashtbl.find_opt ms.id_results id in
-  let file_path = resolve_result_path id ms in
-  Sys.remove file_path;
+  let dir_path = resolve_result_directory td.id ms in
+  WebUtils.File.rm_rec dir_path;
   remove_result td.id ms
 ;;
 
@@ -181,28 +205,25 @@ let drop_all_results ms =
   |> Hashtbl.to_seq_values
   |> Seq.iter (fun td ->
     let open TableData in
-    resolve_result_path td.id ms |> Sys.remove;
+    resolve_result_directory td.id ms |> WebUtils.File.rm_rec;
     Hashtbl.remove ms.locks td.id);
   Hashtbl.reset ms.id_results
 ;;
 
-let write_table td ms = write (resolve_table_path TableData.(td.id) ms) td ms
-let write_result td ms = write (resolve_result_path TableData.(td.id) ms) td ms
-let with_read_table td ms f = with_read (resolve_table_path TableData.(td.id) ms) f
-let with_read_result td ms f = with_read (resolve_result_path TableData.(td.id) ms) f
+let with_read_table td ms f = with_read ~resolver:resolve_table_path td ms f
+let with_read_result td ms f = with_read ~resolver:resolve_result_path td ms f
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
 let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
 let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id
 
 let append_table td ms stream =
   let open TableData in
-  let temp_path = resolve_temp_path td.id ms in
-  let original_path = resolve_table_path td.id ms in
-  with_read original_path (fun og_data ->
-    let cursor = Cursor.create temp_path |> Result.get_ok in
-    Serializer.serialize Const.buffer_size td.columns (Seq.append og_data stream) cursor;
-    Cursor.truncate cursor;
-    Cursor.close cursor);
+  let new_file_id = Uuid.v4 () in
+  let new_path = resolve_table_path td.id new_file_id ms in
+  let cursor = Cursor.create new_path |> Result.get_ok in
+  Serializer.serialize Const.buffer_size td.columns stream cursor;
+  Cursor.truncate cursor;
+  Cursor.close cursor;
   let output_lock = Hashtbl.find ms.locks td.id in
-  Mutex.protect output_lock @@ fun () -> Unix.rename temp_path original_path
+  Mutex.protect output_lock @@ fun () -> td.files <- new_file_id :: td.files
 ;;

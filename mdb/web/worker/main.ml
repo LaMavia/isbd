@@ -46,6 +46,7 @@ let process_select ms tq task_id query_def query =
                 { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
                 ; id
                 ; columns = td.columns
+                ; files = []
                 }
               ms);
        TaskQueue.add_result
@@ -131,7 +132,9 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
     (try
        match query_def with
        | QD_SelectQuery query -> process_select ms tq task_id query_def query
-       | QD_CopyQuery query -> process_copy ms tq task_id query
+       | QD_CopyQuery query ->
+         process_copy ms tq task_id query;
+         Mutex.protect ms.store_lock @@ fun () -> Metastore.Store.save ms
      with
      | QueryTaskError e -> TaskQueue.add_result task_id (Error e) Failed tq
      | e ->
