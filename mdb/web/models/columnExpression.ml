@@ -1,5 +1,22 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
+type expr_type =
+  [ `Int
+  | `Varchar
+  | `Bool
+  ]
+
+let string_of_expt_type : expr_type -> string = function
+  | `Bool -> "BOOL"
+  | `Int -> "INT64"
+  | `Varchar -> "VARCHAR"
+;;
+
+let expr_type_of_lib : Lib.Column.col -> expr_type = function
+  | `ColInt -> `Int
+  | `ColVarchar -> `Varchar
+;;
+
 type column_reference_expression =
   { table_name : string
   ; column_name : string
@@ -166,4 +183,3 @@ let yojson_of_t : t -> Yojson.Safe.t = function
   | `ColumnarBinaryOperation e -> yojson_of_columnar_binary_operation e
   | `ColumnarUnaryOperation e -> yojson_of_columnar_unary_operation e
 ;;
-
