@@ -1,6 +1,8 @@
 type id
 type ('t, 'r, 's) t
 
+exception ShouldStop
+
 val string_of_id : id -> string
 val id_of_string : string -> id
 val uuid_of_id : id -> Uuid.t
@@ -45,6 +47,8 @@ val peek_statuses : ('t, 'r, 's) t -> (id * 's) Seq.t
     If the task doesn't exist, it throws an [Invalid_argument] error.
     *)
 val set_status : id -> 's -> ('t, 'r, 's) t -> unit
+
+val stop : ('t, 'r, 's) t -> unit
 
 val show
   :  ?task:('t -> string) option

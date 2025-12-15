@@ -125,27 +125,31 @@ let process_copy ms tq task_id query =
 let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
   Logger.log `Info "Spawned";
   flush_all ();
-  while true do
-    let task_id, task = TaskQueue.pop_task Planning tq in
-    let query_def = task.request.query_definition in
-    Logger.log `Info "Starting task: %s" (TaskQueue.string_of_id task_id);
-    (try
-       match query_def with
-       | QD_SelectQuery query -> process_select ms tq task_id query_def query
-       | QD_CopyQuery query ->
-         process_copy ms tq task_id query;
-         Mutex.protect ms.store_lock @@ fun () -> Metastore.Store.save ms
-     with
-     | QueryTaskError e -> TaskQueue.add_result task_id (Error e) Failed tq
-     | e ->
-       let e_str = Printexc.to_string e in
-       let e_name = Printexc.exn_slot_name e in
-       TaskQueue.add_result
-         task_id
-         (Error { message = Printf.sprintf "Unexpected error %s" e_name; details = e_str })
-         Failed
-         tq);
-    Logger.log `Info "DONE";
-    flush_all ()
-  done
+  try
+    while true do
+      let task_id, task = TaskQueue.pop_task Planning tq in
+      let query_def = task.request.query_definition in
+      Logger.log `Info "Starting task: %s" (TaskQueue.string_of_id task_id);
+      (try
+         match query_def with
+         | QD_SelectQuery query -> process_select ms tq task_id query_def query
+         | QD_CopyQuery query ->
+           process_copy ms tq task_id query;
+           Mutex.protect ms.store_lock @@ fun () -> Metastore.Store.save ms
+       with
+       | QueryTaskError e -> TaskQueue.add_result task_id (Error e) Failed tq
+       | e ->
+         let e_str = Printexc.to_string e in
+         let e_name = Printexc.exn_slot_name e in
+         TaskQueue.add_result
+           task_id
+           (Error
+              { message = Printf.sprintf "Unexpected error %s" e_name; details = e_str })
+           Failed
+           tq);
+      Logger.log `Info "DONE";
+      flush_all ()
+    done
+  with
+  | TaskQueue.ShouldStop -> Logger.log `Info "Exiting"
 ;;

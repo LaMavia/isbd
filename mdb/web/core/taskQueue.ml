@@ -4,12 +4,15 @@ let string_of_id = Uuid.to_string
 let id_of_string = Uuid.of_string
 let uuid_of_id = Fun.id
 
+exception ShouldStop
+
 type ('t, 'r, 's) t =
   { queue : (id * 't) Queue.t
   ; results : (id, 'r) Hashtbl.t
   ; statuses : (id, 's) Hashtbl.t
   ; lock : Mutex.t
   ; nonempty : Condition.t
+  ; mutable should_stop : bool
   }
 
 let create () =
@@ -18,6 +21,7 @@ let create () =
   ; statuses = Hashtbl.create ~random:true 20
   ; lock = Mutex.create ()
   ; nonempty = Condition.create ()
+  ; should_stop = false
   }
 ;;
 
@@ -37,8 +41,10 @@ let add_task task s q =
 let pop_task s q =
   with_tq q
   @@ fun q ->
+  if q.should_stop then raise ShouldStop;
   while Queue.is_empty q.queue do
-    Condition.wait q.nonempty q.lock
+    Condition.wait q.nonempty q.lock;
+    if q.should_stop then raise ShouldStop
   done;
   let id, t = Queue.take q.queue in
   Hashtbl.replace q.statuses id s;
@@ -77,6 +83,13 @@ let set_status id status q =
   else
     raise
       (Invalid_argument (Printf.sprintf "task with id=%s doesn't exist" (string_of_id id)))
+;;
+
+let stop q =
+  with_tq q
+  @@ fun q ->
+  q.should_stop <- true;
+  Condition.broadcast q.nonempty
 ;;
 
 let show ?(task = None) ?(result = None) ?(status = None) q =
