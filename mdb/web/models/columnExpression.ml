@@ -1,0 +1,169 @@
+open Ppx_yojson_conv_lib.Yojson_conv.Primitives
+
+type column_reference_expression =
+  { table_name : string
+  ; column_name : string
+  }
+[@@deriving yojson]
+
+type literal =
+  [ `LitInt of int64
+  | `LitVarchar of string
+  | `LitBool of bool
+  ]
+
+let yojson_of_literal : literal -> Yojson.Safe.t = function
+  | `LitInt i -> `Intlit (Int64.to_string i)
+  | `LitVarchar s -> `String s
+  | `LitBool b -> `Bool b
+;;
+
+let literal_of_yojson : Yojson.Safe.t -> literal = function
+  | `Intlit is -> `LitInt (Int64.of_string is)
+  | `Int i -> `LitInt (Int64.of_int i)
+  | `String s -> `LitVarchar s
+  | `Bool b -> `LitBool b
+  | j ->
+    Yojson.json_error
+    @@ Printf.sprintf
+         "Expected a (string|int|bool) but got «%s»"
+         (Yojson.Safe.to_string j)
+;;
+
+type function_name =
+  [ `STRLEN
+  | `CONCAT
+  | `UPPER
+  | `LOWER
+  ]
+
+let function_name_of_yojson : Yojson.Safe.t -> function_name = function
+  | `String "STRLEN" -> `STRLEN
+  | `String "CONCAT" -> `CONCAT
+  | `String "UPPER" -> `UPPER
+  | `String "LOWER" -> `LOWER
+  | j ->
+    Yojson.json_error
+    @@ Printf.sprintf
+         "Expected a (STRLEN|CONCAT|UPPER|LOWER) but got «%s»"
+         (Yojson.Safe.to_string j)
+;;
+
+let yojson_of_function_name : function_name -> Yojson.Safe.t = function
+  | `STRLEN -> `String "STRLEN"
+  | `CONCAT -> `String "CONCAT"
+  | `UPPER -> `String "UPPER"
+  | `LOWER -> `String "LOWER"
+;;
+
+type binary_operation_name =
+  [ `ADD
+  | `SUBTRACT
+  | `MULTIPLY
+  | `DIVIDE
+  | `AND
+  | `OR
+  | `EQUAL
+  | `NOT_EQUAL
+  | `LESS_THAN
+  | `LESS_EQUAL
+  | `GREATER_THAN
+  | `GREATER_EQUAL
+  ]
+
+let yojson_of_binary_operation_name : binary_operation_name -> Yojson.Safe.t = function
+  | `ADD -> `String "ADD"
+  | `SUBTRACT -> `String "SUBTRACT"
+  | `MULTIPLY -> `String "MULTIPLY"
+  | `DIVIDE -> `String "DIVIDE"
+  | `AND -> `String "AND"
+  | `OR -> `String "OR"
+  | `EQUAL -> `String "EQUAL"
+  | `NOT_EQUAL -> `String "NOT_EQUAL"
+  | `LESS_THAN -> `String "LESS_THAN"
+  | `LESS_EQUAL -> `String "LESS_EQUAL"
+  | `GREATER_THAN -> `String "GREATER_THAN"
+  | `GREATER_EQUAL -> `String "GREATER_EQUAL"
+;;
+
+let binary_operation_name_of_yojson : Yojson.Safe.t -> binary_operation_name = function
+  | `String "ADD" -> `ADD
+  | `String "SUBTRACT" -> `SUBTRACT
+  | `String "MULTIPLY" -> `MULTIPLY
+  | `String "DIVIDE" -> `DIVIDE
+  | `String "AND" -> `AND
+  | `String "OR" -> `OR
+  | `String "EQUAL" -> `EQUAL
+  | `String "NOT_EQUAL" -> `NOT_EQUAL
+  | `String "LESS_THAN" -> `LESS_THAN
+  | `String "LESS_EQUAL" -> `LESS_EQUAL
+  | `String "GREATER_THAN" -> `GREATER_THAN
+  | `String "GREATER_EQUAL" -> `GREATER_EQUAL
+  | j ->
+    Yojson.json_error
+    @@ Printf.sprintf "Invalid binary operator name «%s»" (Yojson.Safe.to_string j)
+;;
+
+type unary_operation_name =
+  [ `NOT
+  | `MINUS
+  ]
+
+let yojson_of_unary_operation_name : unary_operation_name -> Yojson.Safe.t = function
+  | `NOT -> `String "NOT"
+  | `MINUS -> `String "MINUS"
+;;
+
+let unary_operation_name_of_yojson : Yojson.Safe.t -> unary_operation_name = function
+  | `String "NOT" -> `NOT
+  | `String "MINUS" -> `MINUS
+  | j ->
+    Yojson.json_error
+    @@ Printf.sprintf "Invalid unary operator «%s»" (Yojson.Safe.to_string j)
+;;
+
+type t =
+  [ `ColumnReferenceExpression of column_reference_expression
+  | `Literal of literal
+  | `Function of function_
+  | `ColumnarBinaryOperation of columnar_binary_operation
+  | `ColumnarUnaryOperation of columnar_unary_operation
+  ]
+
+and function_ =
+  { function_name : function_name [@key "functionName"]
+  ; arguments : t list
+  }
+[@@deriving yojson]
+
+and columnar_binary_operation =
+  { b_operator : binary_operation_name [@key "operator"]
+  ; b_left_operand : t [@key "leftOperand"]
+  ; b_right_operand : t [@key "rightOperand"]
+  }
+[@@deriving yojson]
+
+and columnar_unary_operation =
+  { u_operator : unary_operation_name [@key "operator"]
+  ; u_operand : t [@key "operand"]
+  }
+[@@deriving yojson]
+
+let t_of_yojson : Yojson.Safe.t -> t =
+  WebUtils.Yj.alt
+    [ (fun j -> `ColumnReferenceExpression (column_reference_expression_of_yojson j))
+    ; (fun j -> `Literal (literal_of_yojson j))
+    ; (fun j -> `Function (function__of_yojson j))
+    ; (fun j -> `ColumnarBinaryOperation (columnar_binary_operation_of_yojson j))
+    ; (fun j -> `ColumnarUnaryOperation (columnar_unary_operation_of_yojson j))
+    ]
+;;
+
+let yojson_of_t : t -> Yojson.Safe.t = function
+  | `ColumnReferenceExpression e -> yojson_of_column_reference_expression e
+  | `Literal e -> yojson_of_literal e
+  | `Function e -> yojson_of_function_ e
+  | `ColumnarBinaryOperation e -> yojson_of_columnar_binary_operation e
+  | `ColumnarUnaryOperation e -> yojson_of_columnar_unary_operation e
+;;
+
