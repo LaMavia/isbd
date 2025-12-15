@@ -47,7 +47,7 @@ let column_not_found t c =
   }
 ;;
 
-let validate (ms : Metastore.Store.t) e =
+let validate ms e =
   let open Utils.Let.Res in
   let _seen_table = None in
   let rec validate_ce
