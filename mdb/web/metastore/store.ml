@@ -141,14 +141,6 @@ let resolve_result_path rid sid ms =
   Printf.sprintf "%s/%s.bin" (resolve_result_directory rid ms) (Uuid.to_string sid)
 ;;
 
-let resolve_temp_path id ms =
-  Printf.sprintf
-    "%s/%s_temp_%s.bin"
-    ms.config.table_directory
-    (Uuid.to_string id)
-    Uuid.(v4 () |> to_string)
-;;
-
 let resolve_data_path relative_path ms =
   Printf.sprintf "%s/%s" ms.config.data_directory relative_path
 ;;
