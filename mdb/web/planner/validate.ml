@@ -47,9 +47,17 @@ let column_not_found t c =
   }
 ;;
 
+let multiple_tables_seen t1 t2 =
+  let open MultipleProblemsError in
+  { error = "Multiple tables"
+  ; context =
+      Some (Printf.sprintf "Encountered «%s» but «%s» had already beed encountered" t2 t1)
+  }
+;;
+
 let validate ms e =
   let open Utils.Let.Res in
-  let _seen_table = None in
+  let seen_table = ref None in
   let rec validate_ce
     : ColumnExpression.t -> (ColumnExpression.expr_type, MultipleProblemsError.t) result
     = function
@@ -127,7 +135,16 @@ let validate ms e =
     match Metastore.Store.lookup_table_by_name table_name ms with
     | Some td ->
       (match Metastore.TableData.find_column_opt td column_name with
-       | Some (_, ct) -> Ok (ColumnExpression.expr_type_of_lib ct)
+       | Some (_, ct) ->
+         let* () =
+           match !seen_table with
+           | None ->
+             seen_table := Some table_name;
+             Ok ()
+           | Some tname when tname = table_name -> Ok ()
+           | Some tname -> Error [ multiple_tables_seen tname table_name ]
+         in
+         Ok (ColumnExpression.expr_type_of_lib ct)
        | None -> Error [ column_not_found table_name column_name ])
     | None -> Error [ table_not_found table_name ]
   in
