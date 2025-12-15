@@ -11,6 +11,7 @@ module Testable = struct
     let pp_data_type ppf = function
       | `DataInt i -> Format.pp_print_int ppf @@ Int64.to_int i
       | `DataVarchar s -> Format.pp_print_string ppf s
+      | `DataBool b -> Format.pp_print_bool ppf b
     in
     let pp_data_record ppf (d : data_record) = Format.pp_print_array pp_data_type ppf d in
     Alcotest.testable pp_data_record ( = )

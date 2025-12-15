@@ -27,7 +27,8 @@ let test_func (logcols : (string * Column.col) array) (s : Data.Types.t array Se
                           ((Hashtbl.find_opt dict c |> Option.value ~default:0) + 1))
                      s;
                    dict)
-                u.(i))
+                u.(i)
+         | `DataBool b -> raise (Invalid_argument (Printf.sprintf "%b" b)))
       r;
     u
   in

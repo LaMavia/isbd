@@ -2,6 +2,7 @@ module Types = struct
   type t =
     [ `DataInt of int64
     | `DataVarchar of string
+    | `DataBool of bool
     ]
 
   type data_stream = t Seq.t
@@ -9,6 +10,7 @@ module Types = struct
   let to_type_str = function
     | `DataInt _ -> "int64"
     | `DataVarchar _ -> "varchar"
+    | `DataBool _ -> "bool"
   ;;
 
   type 'a getter = t -> ('a, string) result
@@ -30,6 +32,7 @@ module Types = struct
   let to_str = function
     | `DataInt i -> string_of_int (Int64.to_int i)
     | `DataVarchar s -> Printf.sprintf "«%s»" s
+    | `DataBool b -> Printf.sprintf "%b" b
   ;;
 end
 
@@ -42,7 +45,8 @@ let approx_size (records : data_record Seq.t) =
        +
        match c with
        | `DataInt _ -> 8
-       | `DataVarchar s -> String.length s))
+       | `DataVarchar s -> String.length s
+       | `DataBool _ -> 1))
     0
     records
 ;;
