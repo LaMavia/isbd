@@ -1,1 +1,1 @@
-{"tables":[]}
+{"tables":[{"name":"my_table","id":"7fac9dad-67df-48c8-9915-d0043f52b019","columns":[{"name":"col1","type":"INT64"},{"name":"col2","type":"VARCHAR"}],"files":["70434492-fccd-4171-9ab7-51adef363382"]}]}

@@ -17,6 +17,12 @@ let expr_type_of_lib : Lib.Column.col -> expr_type = function
   | `ColVarchar -> `Varchar
 ;;
 
+let lib_of_expr_type_exc : expr_type -> Lib.Column.col = function
+  | `Int -> `ColInt
+  | `Varchar -> `ColVarchar
+  | `Bool -> raise (Invalid_argument "Can't cast Bool to data")
+;;
+
 type column_reference_expression =
   { table_name : string
   ; column_name : string

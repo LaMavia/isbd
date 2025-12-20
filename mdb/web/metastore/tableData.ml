@@ -39,5 +39,5 @@ let to_table_schema (td : t) : Models.TableSchema.t =
 ;;
 
 let find_column_opt td column_name =
-  Array.find_opt (fun (cname, _) -> cname == column_name) td.columns
+  Array.find_opt (fun (cname, _) -> cname = column_name) td.columns
 ;;

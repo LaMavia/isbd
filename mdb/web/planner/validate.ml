@@ -158,18 +158,39 @@ let validate ms seen_table e =
   validate_ce e
 ;;
 
+(** requires a lock on [ms] *)
 let validate_select_query ms (q : SelectQuery.t) =
   let seen_table = ref None in
   let select_res = Utils.Monad.mmap_result (validate ms seen_table) q.column_clauses in
-  let where_res = Option.map (validate ms seen_table) q.where_clause in
-  match select_res, where_res with
-  | Ok _, (Some (Ok _) | None) -> Ok q
-  | _ ->
-    Error
-      (List.append
-         (Result.fold ~ok:(Fun.const []) ~error:Fun.id select_res)
-         (Option.fold
-            ~none:[]
-            ~some:(Result.fold ~ok:(Fun.const []) ~error:Fun.id)
-            where_res))
+  let where_res =
+    Option.map
+      (fun e ->
+         match validate ms seen_table e with
+         | Ok `Bool -> Ok `Bool
+         | Ok t ->
+           Error
+             MultipleProblemsError.
+               [ { error = "Invalid where clause type"
+                 ; context =
+                     Some
+                       (Printf.sprintf
+                          "Expected the clause to be of type %s but got %s instead"
+                          (ColumnExpression.string_of_expt_type `Bool)
+                          (ColumnExpression.string_of_expt_type t))
+                 }
+               ]
+         | Error _ as err -> err)
+      q.where_clause
+  in
+  ( Option.bind !seen_table (fun tname -> Metastore.Store.lookup_table_by_name tname ms)
+  , match select_res, where_res with
+    | Ok column_types, (Some (Ok `Bool) | None) -> Ok (q, column_types)
+    | _ ->
+      Error
+        (List.append
+           (Result.fold ~ok:(Fun.const []) ~error:Fun.id select_res)
+           (Option.fold
+              ~none:[]
+              ~some:(Result.fold ~ok:(Fun.const []) ~error:Fun.id)
+              where_res)) )
 ;;

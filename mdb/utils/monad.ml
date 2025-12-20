@@ -9,6 +9,7 @@ let mmap_result f arr =
             match e with
             | Ok r -> Result.map (List.cons r) u
             | Error excs ->
-              Error (List.append (Result.fold ~ok:(Fun.const []) ~error:Fun.id u) excs))
-         xs
+              Error (List.append excs (Result.fold ~ok:(Fun.const []) ~error:Fun.id u)))
+         (List.rev xs)
+    |> Result.map List.rev
 ;;
