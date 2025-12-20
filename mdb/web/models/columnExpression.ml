@@ -140,11 +140,11 @@ let unary_operation_name_of_yojson : Yojson.Safe.t -> unary_operation_name = fun
 ;;
 
 type t =
-  [ `ColumnReferenceExpression of column_reference_expression
-  | `Literal of literal
-  | `Function of function_
-  | `ColumnarBinaryOperation of columnar_binary_operation
-  | `ColumnarUnaryOperation of columnar_unary_operation
+  [ `ColumnReferenceExpression of column_reference_expression (* 1 *)
+  | `Literal of literal (* 3 *)
+  | `Function of function_ (* 1 *)
+  | `ColumnarBinaryOperation of columnar_binary_operation (* 1 *)
+  | `ColumnarUnaryOperation of columnar_unary_operation (* 1 *)
   ]
 
 and function_ =

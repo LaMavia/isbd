@@ -1,60 +1,68 @@
 open Middleware
 open Core
+
+(* open Models *)
 open Models.ExecuteQueryRequest
 open Models.QueryStatus
 open QueryTask
 
-let process_select ms tq task_id query_def query =
-  let open Models.SelectQuery in
-  let open Utils.Let.Opt in
-  match query.table_name with
-  | None ->
-    Logger.log
-      `Error
-      "Table %s not found"
-      (Option.fold ~none:"None" ~some:Fun.id query.table_name);
-    TaskQueue.add_result
-      task_id
-      (Error
-         { message = "Table name not provided"
-         ; details = "Expected tableName to be a string but got null instead"
-         })
-      Failed
-      tq
-  | Some table_name ->
-    (match Metastore.Store.lookup_table_by_name table_name ms with
-     | None ->
-       TaskQueue.add_result
-         task_id
-         (Error
-            { message = "Undefined table name"
-            ; details = Printf.sprintf "Couldn't find table «%s»" table_name
-            })
-         Failed
-         tq
-     | Some td ->
-       let- table_lock = Hashtbl.find_opt ms.locks td.id in
-       let id = TaskQueue.uuid_of_id task_id in
-       Mutex.protect table_lock (fun () ->
-         Metastore.Store.with_read_table td ms
-         @@ fun data ->
-         TaskQueue.set_status task_id Running tq;
-         let data = List.of_seq data in
-         List.to_seq data
-         |> Metastore.Store.create_result
-              Metastore.TableData.
-                { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
-                ; id
-                ; columns = td.columns
-                ; files = []
-                }
-              ms);
-       TaskQueue.add_result
-         task_id
-         (Ok { query_definition = query_def; result_id = Some id })
-         Completed
-         tq)
+let process_select ms _tq _task_id _query_def query =
+  match Planner.Validate.validate_select_query ms query with
+  | Error _problems -> ()
+  | _ -> ()
 ;;
+
+(* let query = Planner.Preprocess.preprocess_select_query query in *)
+(* () *)
+
+(*   match query.table_name with *)
+(*   | None -> *)
+(*     Logger.log *)
+(*       `Error *)
+(*       "Table %s not found" *)
+(*       (Option.fold ~none:"None" ~some:Fun.id query.table_name); *)
+(*     TaskQueue.add_result *)
+(*       task_id *)
+(*       (Error *)
+(*          { message = "Table name not provided" *)
+(*          ; details = "Expected tableName to be a string but got null instead" *)
+(*          }) *)
+(*       Failed *)
+(*       tq *)
+(*   | Some table_name -> *)
+(*     (match Metastore.Store.lookup_table_by_name table_name ms with *)
+(*      | None -> *)
+(*        TaskQueue.add_result *)
+(*          task_id *)
+(*          (Error *)
+(*             { message = "Undefined table name" *)
+(*             ; details = Printf.sprintf "Couldn't find table «%s»" table_name *)
+(*             }) *)
+(*          Failed *)
+(*          tq *)
+(*      | Some td -> *)
+(*        let- table_lock = Hashtbl.find_opt ms.locks td.id in *)
+(*        let id = TaskQueue.uuid_of_id task_id in *)
+(*        Mutex.protect table_lock (fun () -> *)
+(*          Metastore.Store.with_read_table td ms *)
+(*          @@ fun data -> *)
+(*          TaskQueue.set_status task_id Running tq; *)
+(*          let data = List.of_seq data in *)
+(*          List.to_seq data *)
+(*          |> Metastore.Store.create_result *)
+(*               Metastore.TableData. *)
+(*                 { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id) *)
+(*                 ; id *)
+(*                 ; columns = td.columns *)
+(*                 ; files = [] *)
+(*                 } *)
+(*               ms); *)
+(*        TaskQueue.add_result *)
+(*          task_id *)
+(*          (Ok { query_definition = query_def; result_id = Some id }) *)
+(*          Completed *)
+(*          tq) *)
+(* ;; *)
 
 let make_copy_selector td query =
   let open Models.CopyQuery in
