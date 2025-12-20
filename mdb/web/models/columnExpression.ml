@@ -24,8 +24,8 @@ let lib_of_expr_type_exc : expr_type -> Lib.Column.col = function
 ;;
 
 type column_reference_expression =
-  { table_name : string
-  ; column_name : string
+  { table_name : string [@key "tableName"]
+  ; column_name : string [@key "columnName"]
   }
 [@@deriving yojson]
 
@@ -157,14 +157,12 @@ and function_ =
   { function_name : function_name [@key "functionName"]
   ; arguments : t list
   }
-[@@deriving yojson]
 
 and columnar_binary_operation =
   { b_operator : binary_operation_name [@key "operator"]
   ; b_left_operand : t [@key "leftOperand"]
   ; b_right_operand : t [@key "rightOperand"]
   }
-[@@deriving yojson]
 
 and columnar_unary_operation =
   { u_operator : unary_operation_name [@key "operator"]
@@ -172,14 +170,67 @@ and columnar_unary_operation =
   }
 [@@deriving yojson]
 
-let t_of_yojson : Yojson.Safe.t -> t =
+let rec t_of_yojson : Yojson.Safe.t -> t =
+  fun json ->
   WebUtils.Yj.alt
-    [ (fun j -> `ColumnReferenceExpression (column_reference_expression_of_yojson j))
-    ; (fun j -> `Literal (literal_of_yojson j))
-    ; (fun j -> `Function (function__of_yojson j))
-    ; (fun j -> `ColumnarBinaryOperation (columnar_binary_operation_of_yojson j))
-    ; (fun j -> `ColumnarUnaryOperation (columnar_unary_operation_of_yojson j))
+    [ ( "colref"
+      , fun j -> `ColumnReferenceExpression (column_reference_expression_of_yojson j) )
+    ; ("literal", fun j -> `Literal (literal_of_yojson j))
+    ; ("function", fun j -> `Function (function__of_yojson j))
+    ; ("binary", fun j -> `ColumnarBinaryOperation (columnar_binary_operation_of_yojson j))
+    ; ("unary", fun j -> `ColumnarUnaryOperation (columnar_unary_operation_of_yojson j))
     ]
+    json
+
+and function__of_yojson : Yojson.Safe.t -> function_ = function
+  | `Assoc props ->
+    (match List.assoc_opt "functionName" props, List.assoc_opt "arguments" props with
+     | Some fname_json, Some args_json ->
+       { function_name = [%of_yojson: function_name] fname_json
+       ; arguments = [%of_yojson: t list] args_json
+       }
+     | _ -> Yojson.json_error "function_")
+  | _ -> Yojson.json_error "function_"
+
+and columnar_binary_operation_of_yojson : Yojson.Safe.t -> columnar_binary_operation
+  = function
+  | `Assoc props ->
+    (match
+       ( List.assoc_opt "operator" props
+       , List.assoc_opt "leftOperand" props
+       , List.assoc_opt "rightOperand" props )
+     with
+     | Some op, Some l, Some r ->
+       { b_operator = [%of_yojson: binary_operation_name] op
+       ; b_left_operand = [%of_yojson: t] l
+       ; b_right_operand = [%of_yojson: t] r
+       }
+     | o, l, r ->
+       Yojson.json_error
+         Yojson.Safe.(
+           Printf.sprintf
+             "Invalid props: %s, %s, %s"
+             (o |> yojson_of_option Fun.id |> to_string)
+             (l |> yojson_of_option Fun.id |> to_string)
+             (r |> yojson_of_option Fun.id |> to_string)))
+  | j -> Yojson.json_error (Printf.sprintf "Not assoc: %s" (Yojson.Safe.to_string j))
+
+and columnar_unary_operation_of_yojson : Yojson.Safe.t -> columnar_unary_operation
+  = function
+  | `Assoc props ->
+    (match List.assoc_opt "operator" props, List.assoc_opt "operand" props with
+     | Some op, Some a ->
+       { u_operator = [%of_yojson: unary_operation_name] op
+       ; u_operand = [%of_yojson: t] a
+       }
+     | o, a ->
+       Yojson.json_error
+         Yojson.Safe.(
+           Printf.sprintf
+             "Invalid props: %s, %s"
+             (o |> yojson_of_option Fun.id |> to_string)
+             (a |> yojson_of_option Fun.id |> to_string)))
+  | j -> Yojson.json_error (Printf.sprintf "Not assoc: %s" (Yojson.Safe.to_string j))
 ;;
 
 let yojson_of_t : t -> Yojson.Safe.t = function

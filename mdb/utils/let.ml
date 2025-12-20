@@ -9,8 +9,8 @@ end
 module Res = struct
   open Result
 
-  let ( let- ) o f = iter o f
-  let ( let+ ) o f = map o f
+  let ( let- ) o f = iter f o
+  let ( let+ ) o f = map f o
   let ( let* ) o f = bind o f
   let handler err_handler o f = fold ~error:err_handler ~ok:f o
 

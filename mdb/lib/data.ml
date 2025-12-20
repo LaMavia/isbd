@@ -16,17 +16,22 @@ module Types = struct
   type 'a getter = t -> ('a, string) result
 
   let make_casting_error t d =
-    Result.error @@ Printf.sprintf "Expected %s but got %s instead" t (to_type_str d)
+    Error (Printf.sprintf "Expected %s but got %s instead" t (to_type_str d))
   ;;
 
   let get_int64 : int64 getter = function
-    | `DataInt i -> Result.ok i
+    | `DataInt i -> Ok i
     | d -> make_casting_error "int64" d
   ;;
 
   let get_varchar : string getter = function
-    | `DataVarchar s -> Result.ok s
+    | `DataVarchar s -> Ok s
     | d -> make_casting_error "varchar" d
+  ;;
+
+  let get_bool : bool getter = function
+    | `DataBool b -> Ok b
+    | d -> make_casting_error "bool" d
   ;;
 
   let to_str = function

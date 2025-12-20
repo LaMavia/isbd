@@ -1,0 +1,9 @@
+{
+  "queryDefinition": {
+    "columnClauses": [
+      1,
+      { "tableName": "my_table", "columnName": "col2" },
+      { "operator": "NOT", "operand": false }
+    ]
+  }
+}
