@@ -67,16 +67,24 @@ let process_select ms _tq _task_id _query_def query =
 let make_copy_selector td query =
   let open Models.CopyQuery in
   let open Metastore.TableData in
-  let message = "Destination column error" in
+  let error = "Destination column error" in
   match query.destination_columns with
   | None -> Ok Fun.id
   | Some mappings ->
     if Array.length mappings != Array.length td.columns
-    then Error { message; details = "Invalid number of destination columns" }
+    then
+      Error
+        Models.MultipleProblemsError.
+          [ { error; context = Some "Invalid number of destination columns" } ]
     else (
       match Utils.Validation.are_unique (Array.to_list mappings) with
       | Error col ->
-        Error { message; details = Printf.sprintf "Duplicate destination column %s" col }
+        Error
+          Models.MultipleProblemsError.
+            [ { error
+              ; context = Some (Printf.sprintf "Duplicate destination column %s" col)
+              }
+            ]
       | Ok _ ->
         let table_column_indices =
           td.columns
@@ -88,7 +96,12 @@ let make_copy_selector td query =
            Array.find_opt (Fun.negate (Hashtbl.mem table_column_indices)) mappings
          with
          | Some col ->
-           Error { message; details = Printf.sprintf "Invalid destination column %s" col }
+           Error
+             Models.MultipleProblemsError.
+               [ { error
+                 ; context = Some (Printf.sprintf "Invalid destination column %s" col)
+                 }
+               ]
          | None ->
            let permutation = Array.map (Hashtbl.find table_column_indices) mappings in
            Result.ok @@ fun csv_row -> Array.map (Array.get csv_row) permutation))
@@ -97,23 +110,30 @@ let make_copy_selector td query =
 let process_copy ms tq task_id query =
   let open Models.CopyQuery in
   let open QueryTask in
+  let open Models.MultipleProblemsError in
   let table_name = query.destination_table_name in
   let csv_path = Metastore.Store.resolve_data_path query.source_filepath ms in
   let error_handler e = TaskQueue.add_result task_id (Error e) Failed tq in
   if not (Sys.is_regular_file csv_path)
   then
     error_handler
-      { message = "Failed to find input file"
-      ; details =
-          Printf.sprintf "Couldn't find file «%s» at «%s»" query.source_filepath csv_path
-      }
+      [ { error = "Failed to find input file"
+        ; context =
+            Some
+              (Printf.sprintf
+                 "Couldn't find file «%s» at «%s»"
+                 query.source_filepath
+                 csv_path)
+        }
+      ]
   else (
     match Metastore.Store.lookup_table_by_name table_name ms with
     | None ->
       error_handler
-        { message = "Undefined table name"
-        ; details = Printf.sprintf "Couldn't find table «%s»" table_name
-        }
+        [ { error = "Undefined table name"
+          ; context = Some (Printf.sprintf "Couldn't find table «%s»" table_name)
+          }
+        ]
     | Some td ->
       TaskQueue.set_status task_id Running tq;
       let column_types = td.columns |> Array.map snd in
@@ -152,7 +172,11 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
          TaskQueue.add_result
            task_id
            (Error
-              { message = Printf.sprintf "Unexpected error %s" e_name; details = e_str })
+              Models.MultipleProblemsError.
+                [ { error = Printf.sprintf "Unexpected error %s" e_name
+                  ; context = Some e_str
+                  }
+                ])
            Failed
            tq);
       Logger.log `Info "DONE";
