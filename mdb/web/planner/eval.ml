@@ -293,13 +293,14 @@ let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
 ;;
 
 let worker_main
-      ~worker_idx:_
+      ~worker_idx
       ~pending_deps_array
       ~cols
       ~cmp
       ~desc_array
       ~task_queue
       ~task_queue_lock
+      ~stderr_lock:_
       ()
   =
   let rec aux () =
@@ -342,14 +343,22 @@ let worker_main
              with
              | exc ->
                Sys.remove own_temp_dist;
-               raise_notrace exc)
+               raise exc)
       in
+      Unix.fsync own_cursor.map.fd;
       desc_array.(i) <- Some (own_temp_dist, own_cursor);
       if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
       then Mutex.protect task_queue_lock (fun () -> Queue.add (i / 2) task_queue);
       aux ()
   in
-  aux ()
+  try aux () with
+  | exc ->
+    Printf.eprintf
+      "[merge-worker %d] Exception: %s;\n  %s\n"
+      worker_idx
+      (Printexc.to_string exc)
+      (Printexc.get_backtrace ());
+    raise exc
 ;;
 
 let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size f stream =
@@ -365,14 +374,15 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
 
       Non-[None] elements will be cleaned up in case of an error.
       *)
-  let desc_array = Array.make n_groups None in
+  let desc_array = Array.make (2 * n_groups) None in
+  let stderr_lock = Mutex.create () in
   let task_queue_lock = Mutex.create () in
   let task_queue = Queue.create () in
   (* Insert chunk results *)
   Array.iteri
-    (fun i desc ->
+    (fun i (temp_dist, cursor) ->
        let j = n_groups + i in
-       desc_array.(j) <- Some desc;
+       desc_array.(j) <- Some (temp_dist, cursor);
        Atomic.decr pending_deps_array.(j / 2))
     chunk_descriptors;
   (* Initialise tasks *)
@@ -390,6 +400,7 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
            ~cols
            ~desc_array
            ~task_queue
+           ~stderr_lock
            ~task_queue_lock))
   in
   List.iter Domain.join workers;
@@ -397,10 +408,11 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
     desc_array.(1) |> Utils.Unwrap.option ~message:"Sorting failed?"
   in
   Fun.protect ~finally:(fun () ->
-    Sys.remove result_temp_dist;
-    Metastore.Store.Internal.Cursor.close result_cursor)
-  @@ fun () -> Metastore.Store.read_cursor result_cursor |> f
+    Metastore.Store.Internal.Cursor.close result_cursor;
+    Sys.remove result_temp_dist)
+  @@ fun () -> result_cursor |> Metastore.Store.read_cursor |> f
 ;;
+
 (* Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f *)
 
 (* Atomic.compare_and_set *)

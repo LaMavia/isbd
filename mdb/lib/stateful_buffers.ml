@@ -10,6 +10,14 @@ type stb =
 
 type t = stb array
 
+module DLS_Keys = struct
+  open Domain
+
+  let get_uint8 = DLS.new_key (fun () -> lazy (Bytes.make 1 '\000'))
+  let get_int64be = DLS.new_key (fun () -> lazy (Bytes.make 8 '\000'))
+  let set_int64be = DLS.new_key (fun () -> lazy (Bytes.make 8 '\000'))
+end
+
 let read_bytes : big_bytes -> int -> int -> bytes =
   fun a i0 length ->
   let open Array1 in
@@ -29,28 +37,28 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
 ;;
 
 let get_uint8 =
-  let buffer = Bytes.make 1 '\000' in
   fun (a : big_bytes) (offset : int) ->
-    Array1.get a offset |> Bytes.set buffer 0;
-    Bytes.get_uint8 buffer 0
+  let buffer = Domain.DLS.get DLS_Keys.get_uint8 |> Lazy.force in
+  Array1.get a offset |> Bytes.set buffer 0;
+  Bytes.get_uint8 buffer 0
 ;;
 
 let get_int64_be =
-  let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) ->
-    for i = 0 to 7 do
-      Array1.get a (offset + i) |> Bytes.set buffer i
-    done;
-    Bytes.get_int64_be buffer 0
+  let buffer = Domain.DLS.get DLS_Keys.get_int64be |> Lazy.force in
+  for i = 0 to 7 do
+    Array1.get a (offset + i) |> Bytes.set buffer i
+  done;
+  Bytes.get_int64_be buffer 0
 ;;
 
 let set_int64_be =
-  let buffer = Bytes.make 8 '\000' in
   fun (a : big_bytes) (offset : int) (v : int64) ->
-    Bytes.set_int64_be buffer 0 v;
-    for i = 0 to 7 do
-      Bytes.get buffer i |> Array1.set a (offset + i)
-    done
+  let buffer = Domain.DLS.get DLS_Keys.set_int64be |> Lazy.force in
+  Bytes.set_int64_be buffer 0 v;
+  for i = 0 to 7 do
+    Bytes.get buffer i |> Array1.set a (offset + i)
+  done
 ;;
 
 let get_buffer (bfs : t) (i : int) = bfs.(i)

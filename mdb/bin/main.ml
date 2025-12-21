@@ -10,10 +10,11 @@ let () =
     |> Seq.once
   in
   stream
-  |> with_external_sort
+  |> with_parallel_external_sort
+       ~n_workers:5
        ~cols:[| "col1", `ColInt |]
        ~cmp:(fun a b -> compare a.(0) b.(0))
        ~est_size:Data.approx_record_size
-       ~max_group_size:(Web.Metastore.Const.buffer_size / 16)
+       ~max_group_size:(Web.Metastore.Const.buffer_size / 8)
      @@ Seq.iter ignore
 ;;
