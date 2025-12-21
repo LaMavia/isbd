@@ -168,7 +168,6 @@ and columnar_unary_operation =
   { u_operator : unary_operation_name [@key "operator"]
   ; u_operand : t [@key "operand"]
   }
-[@@deriving yojson]
 
 let rec t_of_yojson : Yojson.Safe.t -> t =
   fun json ->
@@ -233,10 +232,29 @@ and columnar_unary_operation_of_yojson : Yojson.Safe.t -> columnar_unary_operati
   | j -> Yojson.json_error (Printf.sprintf "Not assoc: %s" (Yojson.Safe.to_string j))
 ;;
 
-let yojson_of_t : t -> Yojson.Safe.t = function
+let rec yojson_of_t : t -> Yojson.Safe.t = function
   | `ColumnReferenceExpression e -> yojson_of_column_reference_expression e
   | `Literal e -> yojson_of_literal e
   | `Function e -> yojson_of_function_ e
   | `ColumnarBinaryOperation e -> yojson_of_columnar_binary_operation e
   | `ColumnarUnaryOperation e -> yojson_of_columnar_unary_operation e
+
+and yojson_of_function_ { function_name; arguments } =
+  `Assoc
+    [ "functionName", yojson_of_function_name function_name
+    ; "arguments", [%yojson_of: t list] arguments
+    ]
+
+and yojson_of_columnar_binary_operation { b_operator; b_left_operand; b_right_operand } =
+  `Assoc
+    [ "operator", [%yojson_of: binary_operation_name] b_operator
+    ; "leftOperand", [%yojson_of: t] b_left_operand
+    ; "rightOperand", [%yojson_of: t] b_right_operand
+    ]
+
+and yojson_of_columnar_unary_operation { u_operator; u_operand } =
+  `Assoc
+    [ "operator", [%yojson_of: unary_operation_name] u_operator
+    ; "operand", [%yojson_of: t] u_operand
+    ]
 ;;

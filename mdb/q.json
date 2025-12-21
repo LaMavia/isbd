@@ -1,9 +1,10 @@
 {
   "queryDefinition": {
-    "columnClauses": [
-      1,
-      { "tableName": "my_table", "columnName": "col2" },
-      { "operator": "NOT", "operand": false }
-    ]
+    "columnClauses": [1, { "tableName": "my_table", "columnName": "col2" }],
+    "whereClause": {
+      "operator": "LESS_THAN",
+      "leftOperand": { "tableName": "my_table", "columnName": "col1" },
+      "rightOperand": 2
+    }
   }
 }
