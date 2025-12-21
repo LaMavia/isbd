@@ -1,5 +1,9 @@
 module Make (OC : Cursor.CursorInterface) = struct
-  let write_columns (logcols : (string * Column.col) array) (output_cursor : OC.t) =
+  let write_columns
+        ?(encode = true)
+        (logcols : (string * Column.col) array)
+        (output_cursor : OC.t)
+    =
     let open OC in
     let open Stateful_buffers in
     let cols_offset = output_cursor |> position |> Int64.of_int in
@@ -17,7 +21,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     (* Serialize each column *)
     logcols
     |> Array.iter (fun logcol -> Column.Columns.ColumnInfoColumn.serialize logcol bfs 0);
-    Column.Columns.ColumnInfoColumn.encode_fragments bfs 0;
+    if encode then Column.Columns.ColumnInfoColumn.encode_fragments bfs 0;
     (* print_buffers "Encoded columns" bfs; *)
     let cols_bf = get_buffer bfs 0 in
     let cols_lengths_bf = get_buffer bfs 1 in
@@ -33,6 +37,7 @@ module Make (OC : Cursor.CursorInterface) = struct
   ;;
 
   let serialize
+        ?(encode = true)
         (buffer_size_suggestion : int)
         (logcols : (string * Column.col) array)
         (record_stream : Data.data_record Seq.t)
@@ -86,7 +91,7 @@ module Make (OC : Cursor.CursorInterface) = struct
            Column.Columns.IntColumn.serialize (Int64.of_int b.position) lengths_bfs 0)
         chunk_bfs
       |> ignore;
-      Column.Columns.IntColumn.encode_fragments lengths_bfs 0;
+      if encode then Column.Columns.IntColumn.encode_fragments lengths_bfs 0;
       let lengths_a = get_buffer lengths_bfs 0 in
       let fragments_offset_offset = OC.position output_cursor in
       output_cursor |> OC.move 8 |> OC.write lengths_a.position lengths_a.buffer |> ignore;
@@ -104,11 +109,13 @@ module Make (OC : Cursor.CursorInterface) = struct
       empty chunk_bfs;
       empty lengths_bfs
     and encode_fragments () =
-      let encode_column ((i, fi) : int * int) encoder =
-        encoder chunk_bfs fi;
-        i + 1, fi + phys_lens.(i)
-      in
-      Array.fold_left encode_column (0, 0) encoders |> ignore
+      if encode
+      then (
+        let encode_column ((i, fi) : int * int) encoder =
+          encoder chunk_bfs fi;
+          i + 1, fi + phys_lens.(i)
+        in
+        Array.fold_left encode_column (0, 0) encoders |> ignore)
     in
     let process_record (r : Data.data_record) =
       let process_column ((i, bi) : int * int) (v : Data.Types.t) =
@@ -123,7 +130,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     then (
       encode_fragments ();
       dump_buffers ());
-    write_columns logcols output_cursor
+    write_columns ~encode logcols output_cursor
   ;;
 end
 

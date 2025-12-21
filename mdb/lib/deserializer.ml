@@ -3,7 +3,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   open Stateful_buffers
   open Bigarray
 
-  let read_columns (input_cursor : IC.t) =
+  let read_columns ?(decode = true) (input_cursor : IC.t) =
     let offsets_len = 16
     and input_len = len input_cursor in
     let offset_bytes =
@@ -16,11 +16,13 @@ module Make (IC : Cursor.CursorInterface) = struct
     let cols_bytes = input_cursor |> seek cols_offset |> read cols_lens in
     let cols_lengths_bytes = input_cursor |> read cols_lengths_lens in
     let bfs = of_list [ cols_bytes; cols_lengths_bytes ] in
-    Column.Columns.ColumnInfoColumn.decode_fragments
-      bfs
-      0
-      [| cols_lens; cols_lengths_lens |]
-      0;
+    if decode
+    then
+      Column.Columns.ColumnInfoColumn.decode_fragments
+        bfs
+        0
+        [| cols_lens; cols_lengths_lens |]
+        0;
     let cols_bf = get_buffer bfs 0
     and cols_lengths_bf = get_buffer bfs 1 in
     cols_bf.position <- 0;
@@ -29,8 +31,8 @@ module Make (IC : Cursor.CursorInterface) = struct
     columns, cols_offset
   ;;
 
-  let deserialize (input_cursor : IC.t) =
-    let logcols, chunks_len = read_columns input_cursor in
+  let deserialize ?(decode = true) (input_cursor : IC.t) =
+    let logcols, chunks_len = read_columns ~decode input_cursor in
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
@@ -77,7 +79,8 @@ module Make (IC : Cursor.CursorInterface) = struct
           blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
         fraglen_a.position <- 0;
         fraglen_a.length <- fraglens_len;
-        Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
+        if decode
+        then Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
         (* load each column into bfs *)
         let flens =
           Column.Columns.IntColumn.deserialize_seq fraglen_bfs 0
@@ -90,13 +93,15 @@ module Make (IC : Cursor.CursorInterface) = struct
             flen)
         in
         fraglen_a.length <- prev_fraglen_a_length;
-        Array.fold_left
-          (fun (i, fi) _ ->
-             decoders.(i) bfs fi flens fi;
-             i + 1, fi + phys_lens.(i))
-          (0, 0)
-          logcols
-        |> ignore;
+        if decode
+        then
+          Array.fold_left
+            (fun (i, fi) _ ->
+               decoders.(i) bfs fi flens fi;
+               i + 1, fi + phys_lens.(i))
+            (0, 0)
+            logcols
+          |> ignore;
         Array.iter (fun b -> b.position <- 0) bfs;
         let n_cols = Array.length logcols in
         let column_vals = Array.init n_cols (Fun.const [||]) in

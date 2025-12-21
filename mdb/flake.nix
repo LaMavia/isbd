@@ -185,6 +185,8 @@
               ttyplot
               unixtools.xxd
               (callPackage ./packages/ocaml_lz4.nix { })
+              (callPackage ./packages/ocaml_memtrace_viewer.nix { })
+
               bun
               postman
             ]) ++ (with ocamlPackages; [

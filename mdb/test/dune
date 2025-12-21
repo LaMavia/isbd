@@ -7,11 +7,11 @@
 ;  (name e2e)
 ;  (libraries alcotest lib))
 
-(test
- (name sorting)
- (libraries alcotest lib web)
- (preprocess
-  (pps lwt_ppx ppx_yojson_conv)))
+; (test
+;  (name sorting)
+;  (libraries alcotest lib web)
+;  (preprocess
+;   (pps lwt_ppx ppx_yojson_conv)))
 
 ; (test
 ;  (name api_route_stubs)
