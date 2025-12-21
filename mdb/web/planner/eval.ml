@@ -226,6 +226,37 @@ let group_eph_seq pred seq0 =
                 None))))
 ;;
 
+let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
+
+let group_chunks ~cols ~cmp ~est_size ~max_group_size stream =
+  let group_size = ref 0 in
+  group_eph_seq
+    (fun _ q ->
+       let q_size = est_size q in
+       if !group_size + q_size > max_group_size
+       then (
+         group_size := q_size;
+         false)
+       else (
+         group_size := !group_size + q_size;
+         true))
+    stream
+  |> Seq.mapi (fun _i s ->
+    Printf.eprintf "[%s] sorting group %d\n" __FUNCTION__ _i;
+    flush stderr;
+    s |> in_memory_sort cmp)
+  |> Seq.mapi (fun _i group_stream ->
+    Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
+    flush stderr;
+    let temp_dist = make_temp_chunk_file () in
+    let cursor = Metastore.Store.write temp_dist cols group_stream in
+    Metastore.Store.Internal.Cursor.close cursor;
+    (* Printf.eprintf "Finished writing\n"; *)
+    (* flush_all (); *)
+    temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
+  |> Array.of_seq
+;;
+
 (** [with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream]
 
     1. splits [stream] of records with columns [cols] into groups of approximately [max_group_size] (estimated on per-record basis using [est_size]). The size can be exceeded by the estimated size of 1 record;
@@ -244,41 +275,12 @@ let group_eph_seq pred seq0 =
     [f] should consume the entire stream by the time it's done, because the resulting merged stream is ephemeral.
     *)
 let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
-  let group_size = ref 0 in
-  let chunk_descriptors =
-    group_eph_seq
-      (fun _ q ->
-         let q_size = est_size q in
-         if !group_size + q_size > max_group_size
-         then (
-           group_size := q_size;
-           false)
-         else (
-           group_size := !group_size + q_size;
-           true))
-      stream
-    |> Seq.mapi (fun _i s ->
-      Printf.eprintf "[%s] sorting group %d\n" __FUNCTION__ _i;
-      flush stderr;
-      s |> in_memory_sort cmp)
-    |> Seq.mapi (fun _i group_stream ->
-      Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
-      flush stderr;
-      let temp_dist = Filename.temp_file "chunk" ".bin" in
-      let cursor = Metastore.Store.write temp_dist cols group_stream in
-      Metastore.Store.Internal.Cursor.close cursor;
-      (* Printf.eprintf "Finished writing\n"; *)
-      (* flush_all (); *)
-      temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
-    |> Array.of_seq
-  in
+  let chunk_descriptors = group_chunks ~cols ~cmp ~est_size ~max_group_size stream in
   let chunk_streams =
     Array.map
       (fun (_temp_dist, cursor) -> Metastore.Store.read_cursor cursor)
       chunk_descriptors
   in
-  (* Printf.eprintf "[%s] |chunk_streams|=%d\n" __FUNCTION__ (Array.length chunk_streams); *)
-  (* flush_all (); *)
   let cleanup () =
     Array.iter
       (fun (temp_dist, cursor) ->
@@ -289,3 +291,116 @@ let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
   in
   Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
 ;;
+
+let worker_main
+      ~worker_idx:_
+      ~pending_deps_array
+      ~cols
+      ~cmp
+      ~desc_array
+      ~task_queue
+      ~task_queue_lock
+      ()
+  =
+  let rec aux () =
+    match Mutex.protect task_queue_lock (fun () -> Queue.take_opt task_queue) with
+    | None -> ()
+    | Some (i : int) ->
+      let a_temp_dist, a_cursor =
+        desc_array.(2 * i)
+        |> Utils.Unwrap.option
+             ~message:
+               (Printf.sprintf
+                  "Invalid assumption: null left result %d for parent %d"
+                  (2 * i)
+                  i)
+      and b_temp_dist, b_cursor =
+        desc_array.((2 * i) + 1)
+        |> Utils.Unwrap.option
+             ~message:
+               (Printf.sprintf
+                  "Invalid assumption: null right result %d for parent %d"
+                  ((2 * i) + 1)
+                  i)
+      in
+      let own_temp_dist = make_temp_chunk_file () in
+      let own_cursor =
+        Fun.protect
+          ~finally:(fun () ->
+            Metastore.Store.Internal.Cursor.(
+              close a_cursor;
+              close b_cursor);
+            Sys.(
+              remove a_temp_dist;
+              remove b_temp_dist))
+          (fun () ->
+             let a_stream = Metastore.Store.read_cursor a_cursor
+             and b_stream = Metastore.Store.read_cursor b_cursor in
+             try
+               Seq.sorted_merge cmp a_stream b_stream
+               |> Metastore.Store.write own_temp_dist cols
+             with
+             | exc ->
+               Sys.remove own_temp_dist;
+               raise_notrace exc)
+      in
+      desc_array.(i) <- Some (own_temp_dist, own_cursor);
+      if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
+      then Mutex.protect task_queue_lock (fun () -> Queue.add (i / 2) task_queue);
+      aux ()
+  in
+  aux ()
+;;
+
+let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size f stream =
+  let chunk_descriptors = group_chunks ~cols ~cmp ~est_size ~max_group_size stream in
+  let n_groups = Array.length chunk_descriptors in
+  (* [pending_deps_array.(i)] is the number of pending child tasks for the task [i], for [i] > 0.
+
+      [pending_deps_array.(i) = 0] implies [Option.is_some desc_array.(2*i)] and [Option.is_some desc_array.(2*i + 1)]
+      *)
+  let pending_deps_array = Array.init n_groups (fun _ -> Atomic.make 2) in
+  (* [desc_array.(i) = (temp_dist, cursor)] stores the resulting [(temp_dist, cursor)] of the completed task [i].
+      The parent task [i/2] is responsible for closing [cursor], removing [temp_dist], and setting [desc_array.(i)] to [None].
+
+      Non-[None] elements will be cleaned up in case of an error.
+      *)
+  let desc_array = Array.make n_groups None in
+  let task_queue_lock = Mutex.create () in
+  let task_queue = Queue.create () in
+  (* Insert chunk results *)
+  Array.iteri
+    (fun i desc ->
+       let j = n_groups + i in
+       desc_array.(j) <- Some desc;
+       Atomic.decr pending_deps_array.(j / 2))
+    chunk_descriptors;
+  (* Initialise tasks *)
+  Array.iteri
+    (fun i pending_deps_atom ->
+       if Atomic.get pending_deps_atom = 0 then Queue.add i task_queue)
+    pending_deps_array;
+  let workers =
+    List.init n_workers (fun worker_idx ->
+      Domain.spawn
+        (worker_main
+           ~worker_idx
+           ~pending_deps_array
+           ~cmp
+           ~cols
+           ~desc_array
+           ~task_queue
+           ~task_queue_lock))
+  in
+  List.iter Domain.join workers;
+  let result_temp_dist, result_cursor =
+    desc_array.(1) |> Utils.Unwrap.option ~message:"Sorting failed?"
+  in
+  Fun.protect ~finally:(fun () ->
+    Sys.remove result_temp_dist;
+    Metastore.Store.Internal.Cursor.close result_cursor)
+  @@ fun () -> Metastore.Store.read_cursor result_cursor |> f
+;;
+(* Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f *)
+
+(* Atomic.compare_and_set *)
