@@ -213,11 +213,11 @@ let append_table td ms stream =
 (** unprotected write, used for sorting, doesn't close the cursor*)
 let write path columns stream =
   let cursor = Cursor.create path |> Result.get_ok in
-  Serializer.serialize ~encode:false (Const.buffer_size / 8) columns stream cursor;
+  Serializer.serialize ~encode:true (Const.buffer_size / 8) columns stream cursor;
   Cursor.truncate cursor;
   cursor
 ;;
 
 let read_cursor cursor =
-  Cursor.seek 0 cursor |> Deserializer.deserialize ~decode:false |> snd
+  Cursor.seek 0 cursor |> Deserializer.deserialize ~decode:true |> snd
 ;;

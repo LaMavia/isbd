@@ -19,10 +19,4 @@
 (package
  (name mdb)
  (synopsis "Friendly greetings")
- (depends
-  (openapi
-   (>= 1.0.1))
-  (ppx_deriving_json_schema
-   (>= 1.0.0))
-  lib
-  ))
+ )

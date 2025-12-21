@@ -75,8 +75,7 @@ module Columns = struct
       in
       let a' = create_bytes (List.length decoded_values * 8) in
       List.iteri (fun i n -> set_int64_be a' (i * 8) n) decoded_values;
-      set_buffer bfs bi a';
-      (get_buffer bfs bi).length <- Array1.dim a'
+      set_buffer bfs bi a'
 
     and decode_vle a =
       let pos = ref 0 in

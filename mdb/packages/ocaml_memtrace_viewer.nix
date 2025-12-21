@@ -9,18 +9,20 @@ ocamlPackages.buildDunePackage rec {
   version = "0.17.0";
   src = pkgs.fetchzip {
     url = "https://github.com/janestreet/memtrace_viewer/archive/refs/tags/v${version}.tar.gz";
-    sha256 = "sha256-x95lpdHtry5K0H/hXjmacJ+3ymxpw60ek++MSRhKSuU=";
+    sha256 = "sha256-vtqhN+ro9UUqmgt8mxNq3caAvtjBr2YVFFvrYF22JoE=";
   };
 
   propagatedBuildInputs = (with pkgs; [
     libunwind
   ]) ++ (with ocamlPackages; [
     memtrace
-    core
-    bonsai
     ctypes
     dune-configurator
     ounit2
+    js_of_ocaml
+    js_of_ocaml-ppx
+    janeStreet.ocaml-embed-file
+    bonsai
   ]);
 
   doCheck = true;

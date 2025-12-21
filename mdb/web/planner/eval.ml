@@ -168,8 +168,10 @@ let next_seq_array arr i =
 
 let k_way_merge cmp (streams : 'a Seq.t array) =
   let open Utils.Let.Opt in
-  let state = Array.mapi (fun i _ -> next_seq_array streams i) streams in
-  Seq.of_dispenser (fun () ->
+  let streams = Array.map Seq.to_dispenser streams in
+  let get_val i d = d () |> Option.map (fun v -> i, v) in
+  let state = Array.mapi get_val streams in
+  let aux () =
     let+ i, min_val =
       Array.fold_right
         (fun e u ->
@@ -184,13 +186,10 @@ let k_way_merge cmp (streams : 'a Seq.t array) =
         state
         None
     in
-    Printf.eprintf
-      "[%s] next, M=%fMB\n"
-      __FUNCTION__
-      (Gc.allocated_bytes () /. 1024. /. 1024.);
-    flush_all ();
-    state.(i) <- next_seq_array streams i;
-    min_val)
+    state.(i) <- get_val i streams.(i);
+    min_val
+  in
+  Seq.of_dispenser aux
 ;;
 
 let in_memory_sort cmp stream =
@@ -258,48 +257,35 @@ let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
            group_size := !group_size + q_size;
            true))
       stream
-    |> Seq.mapi (fun i s ->
-      Printf.eprintf "[%s] sorting group %d\n" __FUNCTION__ i;
-      flush_all ();
+    |> Seq.mapi (fun _i s ->
+      Printf.eprintf "[%s] sorting group %d\n" __FUNCTION__ _i;
+      flush stderr;
       s |> in_memory_sort cmp)
-    |> Seq.mapi (fun i group_stream ->
-      Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ i;
-      flush_all ();
+    |> Seq.mapi (fun _i group_stream ->
+      Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
+      flush stderr;
       let temp_dist = Filename.temp_file "chunk" ".bin" in
-      (try
-         let cursor = Metastore.Store.write temp_dist cols group_stream in
-         Metastore.Store.Internal.Cursor.close cursor
-       with
-       | _ ->
-         Printf.eprintf "Forced twice in write\n";
-         flush_all ());
-      Printf.eprintf "Finished writing\n";
-      flush_all ();
+      let cursor = Metastore.Store.write temp_dist cols group_stream in
+      Metastore.Store.Internal.Cursor.close cursor;
+      (* Printf.eprintf "Finished writing\n"; *)
+      (* flush_all (); *)
       temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
-    |> Seq.fold_left
-         (fun u g ->
-            try g :: u with
-            | Seq.Forced_twice ->
-              Printf.eprintf "Forced twice in append\n";
-              flush_all ();
-              u)
-         []
-    |> Array.of_list
+    |> Array.of_seq
   in
-  Gc.major ();
   let chunk_streams =
     Array.map
       (fun (_temp_dist, cursor) -> Metastore.Store.read_cursor cursor)
       chunk_descriptors
   in
-  Printf.eprintf "[%s] |chunk_streams|=%d\n" __FUNCTION__ (Array.length chunk_streams);
-  flush_all ();
+  (* Printf.eprintf "[%s] |chunk_streams|=%d\n" __FUNCTION__ (Array.length chunk_streams); *)
+  (* flush_all (); *)
   let cleanup () =
     Array.iter
       (fun (temp_dist, cursor) ->
          Metastore.Store.Internal.Cursor.close cursor;
          Sys.remove temp_dist)
-      chunk_descriptors
+      chunk_descriptors;
+    Gc.full_major ()
   in
   Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
 ;;

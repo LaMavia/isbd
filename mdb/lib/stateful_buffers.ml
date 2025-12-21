@@ -103,11 +103,6 @@ let copy_bytes a =
 
 let blit src_bfs dist_bfs = Array.iter2 blit_big_bytes src_bfs dist_bfs
 
-let free bfs =
-  Array.iter Buffer.clear bfs;
-  Gc.major ()
-;;
-
 let print_buffers label (bfs : t) =
   Printf.eprintf "%s:\n" label;
   Array.iteri

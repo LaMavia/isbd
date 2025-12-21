@@ -176,6 +176,7 @@
           default = legacyPackages.mkShell {
 
             packages = (with pkgs; [
+              heaptrack
               nixpkgs-fmt
               ocamlformat
               fswatch
@@ -185,7 +186,7 @@
               ttyplot
               unixtools.xxd
               (callPackage ./packages/ocaml_lz4.nix { })
-              (callPackage ./packages/ocaml_memtrace_viewer.nix { })
+              # (callPackage ./packages/ocaml_memtrace_viewer.nix { })
 
               bun
               postman

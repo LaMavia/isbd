@@ -33,6 +33,7 @@ module Make (IC : Cursor.CursorInterface) = struct
 
   let deserialize ?(decode = true) (input_cursor : IC.t) =
     let logcols, chunks_len = read_columns ~decode input_cursor in
+    Gc.major ();
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
@@ -64,9 +65,18 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~len:suggested_buffer_size
         ~actual_length:buffer_size
     in
+    Printf.eprintf "[%s] buffer_size=%d\n" __FUNCTION__ buffer_size;
+    flush stderr;
+    let should_gc_major = ref false in
     let rec give_record () =
+      (* if !should_gc_major *)
+      (* then ( *)
+      (*   should_gc_major := false; *)
+      (*   Gc.major ()); *)
       match Seq.uncons !parsed_record_seq with
-      | Option.None when IC.position input_cursor >= chunks_len -> Option.None
+      | Option.None when IC.position input_cursor >= chunks_len ->
+        (* Gc.major (); *)
+        Option.None
       | Option.Some (h, t) ->
         parsed_record_seq := t;
         Option.Some h
@@ -104,27 +114,23 @@ module Make (IC : Cursor.CursorInterface) = struct
           |> ignore;
         Array.iter (fun b -> b.position <- 0) bfs;
         let n_cols = Array.length logcols in
-        let column_vals = Array.init n_cols (Fun.const [||]) in
-        Array.fold_left
-          (fun (i, bi) _ ->
-             column_vals.(i) <- deserializers.(i) bfs bi |> Array.of_seq;
-             i + 1, bi + phys_lens.(i))
-          (0, 0)
-          logcols
-        |> ignore;
-        let aux =
-          let pos = ref 0 in
-          fun () ->
-            try
-              (pos := !pos + 1;
-               Array.init n_cols (fun ci -> column_vals.(ci).(!pos - 1)))
-              |> Option.some
-            with
-            | Invalid_argument _ -> Option.None
+        let _, column_dispensers =
+          Array.fold_left_map
+            (fun (i, bi) _ ->
+               (i + 1, bi + phys_lens.(i)), deserializers.(i) bfs bi |> Seq.to_dispenser)
+            (0, 0)
+            logcols
+        in
+        let aux () =
+          try
+            Some (Array.init n_cols (fun ci -> column_dispensers.(ci) () |> Option.get))
+          with
+          | Invalid_argument _ -> None
         in
         parsed_record_seq := Seq.of_dispenser aux;
         empty fraglen_bfs;
         empty bfs;
+        should_gc_major := true;
         give_record ()
     in
     logcols, Seq.of_dispenser give_record

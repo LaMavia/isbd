@@ -4,9 +4,6 @@ synopsis: "Friendly greetings"
 license: "MIT-0"
 depends: [
   "dune" {>= "3.8"}
-  "openapi" {>= "1.0.1"}
-  "ppx_deriving_json_schema" {>= "1.0.0"}
-  "lib"
   "odoc" {with-doc}
 ]
 build: [
