@@ -38,16 +38,6 @@ module Internal = struct
 
   let remove_result id ms = Hashtbl.remove ms.id_results id
 
-  (* let write output_dir (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) = *)
-  (*   let open Utils.Let.Opt in *)
-  (*   let- output_lock = Hashtbl.find_opt ms.locks td.id in *)
-  (*   Mutex.protect output_lock (fun () -> *)
-  (*     let cursor = Cursor.create output_dir |> Result.get_ok in *)
-  (*     Serializer.serialize Const.buffer_size td.columns stream cursor; *)
-  (*     Cursor.truncate cursor; *)
-  (*     Cursor.close cursor) *)
-  (* ;; *)
-
   let with_read ~resolver td ms f =
     let open TableData in
     let cursors =
@@ -219,3 +209,13 @@ let append_table td ms stream =
   let output_lock = Hashtbl.find ms.locks td.id in
   Mutex.protect output_lock @@ fun () -> td.files <- new_file_id :: td.files
 ;;
+
+(** unprotected write, used for sorting, doesn't close the cursor*)
+let write path columns stream =
+  let cursor = Cursor.create path |> Result.get_ok in
+  Serializer.serialize Const.buffer_size columns stream cursor;
+  Cursor.truncate cursor;
+  cursor
+;;
+
+let read_cursor cursor = Cursor.seek 0 cursor |> Deserializer.deserialize |> snd

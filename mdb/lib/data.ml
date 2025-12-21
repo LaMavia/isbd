@@ -43,15 +43,22 @@ end
 
 type data_record = Types.t array
 
-let approx_size (records : data_record Seq.t) =
-  Seq.fold_left
-    (Array.fold_left (fun u c ->
+let approx_record_size : data_record -> int =
+  Array.fold_left
+    (fun u c ->
        u
        +
        match c with
        | `DataInt _ -> 8
        | `DataVarchar s -> String.length s
-       | `DataBool _ -> 1))
+       | `DataBool _ -> 1)
     0
-    records
+;;
+
+let approx_size (records : data_record Seq.t) =
+  Seq.fold_left (fun u r -> u + approx_record_size r) 0 records
+;;
+
+let string_of_record (r : data_record) =
+  Array.to_list r |> List.map Types.to_str |> String.concat "; "
 ;;
