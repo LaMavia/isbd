@@ -18,3 +18,5 @@ results/*
 
 !tables/.*
 !results/.*
+
+*.zst

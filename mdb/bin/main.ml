@@ -18,3 +18,5 @@ let () =
        ~max_group_size:(Web.Metastore.Const.buffer_size / 8)
      @@ Seq.iter ignore
 ;;
+(* @@ Seq.iteri (fun i r -> *)
+(*   Printf.eprintf "%d: %Ld\n" i (r.(0) |> Data.Types.get_int64 |> Result.get_ok)) *)

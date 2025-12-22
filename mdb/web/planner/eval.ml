@@ -228,7 +228,46 @@ let group_eph_seq pred seq0 =
 
 let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
 
-let group_chunks ~cols ~cmp ~est_size ~max_group_size stream =
+(* let parallel_shuffle_map_eph_seq ~n_workers f seq = *)
+(*   let result_queue_lock = Mutex.create () *)
+(*   and result_queue = Queue.create () *)
+(*   and result_queue_empty_cond = Condition.create () *)
+(*   and input_queue_lock = Mutex.create () *)
+(*   and input_queue = Queue.create () *)
+(*   and input_queue_empty_cond = Condition.create () *)
+(*   and should_stop_atom = Atomic.make false in *)
+(*   let seq_dispenser = Seq.to_dispenser seq in *)
+(*   let worker_aux () = *)
+(*     let keep_going = ref true in *)
+(*     while !keep_going do *)
+(*       let next_input_opt = *)
+(*         Mutex.protect input_queue_lock (fun () -> *)
+(*           while Queue.is_empty input_queue && not (Atomic.get should_stop_atom) do *)
+(*             Condition.wait input_queue_empty_cond input_queue_lock *)
+(*           done; *)
+(*           Queue.take_opt input_queue) *)
+(*       in *)
+(*       match next_input_opt with *)
+(*       | None -> keep_going := false *)
+(*       | Some inp -> *)
+(*         let res = f inp in *)
+(*         Mutex.protect result_queue_lock (fun () -> *)
+(*           Queue.add res result_queue; *)
+(*           Condition.broadcast result_queue_empty_cond) *)
+(*     done *)
+(*   in *)
+(*   let dispenser_aux () = *)
+(*     match seq_dispenser () with *)
+(*     | None -> Atomic.set should_stop_atom true *)
+(*     | Some inp -> *)
+(*       Mutex.protect input_queue_lock (fun () -> *)
+(*         Queue.add inp input_queue; *)
+(*         Condition.broadcast input_queue_empty_cond) *)
+(*   in *)
+(*   () *)
+(* ;; *)
+
+let group_chunks ~cols ~cmp:_ ~est_size ~max_group_size stream =
   let group_size = ref 0 in
   group_eph_seq
     (fun _ q ->
@@ -241,10 +280,6 @@ let group_chunks ~cols ~cmp ~est_size ~max_group_size stream =
          group_size := !group_size + q_size;
          true))
     stream
-  |> Seq.mapi (fun _i s ->
-    Printf.eprintf "[%s] sorting group %d\n" __FUNCTION__ _i;
-    flush stderr;
-    s |> in_memory_sort cmp)
   |> Seq.mapi (fun _i group_stream ->
     Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
     flush stderr;
@@ -306,7 +341,24 @@ let worker_main
   let rec aux () =
     match Mutex.protect task_queue_lock (fun () -> Queue.take_opt task_queue) with
     | None -> ()
-    | Some (i : int) ->
+    | Some (`Sort (i : int)) ->
+      let temp_dist, cursor =
+        desc_array.(i)
+        |> Utils.Unwrap.option
+             ~message:(Printf.sprintf "Invalid assumption: no cursor %d to sort" i)
+      in
+      cursor
+      |> Metastore.Store.read_cursor
+      |> List.of_seq
+      |> List.sort cmp
+      |> List.to_seq
+      |> Metastore.Store.write temp_dist cols
+      |> ignore
+      (* returns the same cursor *);
+      if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
+      then Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
+      aux ()
+    | Some (`Merge (i : int)) ->
       let a_temp_dist, a_cursor =
         desc_array.(2 * i)
         |> Utils.Unwrap.option
@@ -345,10 +397,9 @@ let worker_main
                Sys.remove own_temp_dist;
                raise exc)
       in
-      Unix.fsync own_cursor.map.fd;
       desc_array.(i) <- Some (own_temp_dist, own_cursor);
       if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
-      then Mutex.protect task_queue_lock (fun () -> Queue.add (i / 2) task_queue);
+      then Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
       aux ()
   in
   try aux () with
@@ -368,7 +419,9 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
 
       [pending_deps_array.(i) = 0] implies [Option.is_some desc_array.(2*i)] and [Option.is_some desc_array.(2*i + 1)]
       *)
-  let pending_deps_array = Array.init n_groups (fun _ -> Atomic.make 2) in
+  let pending_deps_array =
+    Array.init (2 * n_groups) (fun i -> Atomic.make (if i < n_groups then 2 else 0))
+  in
   (* [desc_array.(i) = (temp_dist, cursor)] stores the resulting [(temp_dist, cursor)] of the completed task [i].
       The parent task [i/2] is responsible for closing [cursor], removing [temp_dist], and setting [desc_array.(i)] to [None].
 
@@ -377,18 +430,17 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
   let desc_array = Array.make (2 * n_groups) None in
   let stderr_lock = Mutex.create () in
   let task_queue_lock = Mutex.create () in
-  let task_queue = Queue.create () in
+  let task_queue : [ `Sort of int | `Merge of int ] Queue.t = Queue.create () in
   (* Insert chunk results *)
   Array.iteri
     (fun i (temp_dist, cursor) ->
        let j = n_groups + i in
-       desc_array.(j) <- Some (temp_dist, cursor);
-       Atomic.decr pending_deps_array.(j / 2))
+       desc_array.(j) <- Some (temp_dist, cursor))
     chunk_descriptors;
   (* Initialise tasks *)
   Array.iteri
     (fun i pending_deps_atom ->
-       if Atomic.get pending_deps_atom = 0 then Queue.add i task_queue)
+       if Atomic.get pending_deps_atom = 0 then Queue.add (`Sort i) task_queue)
     pending_deps_array;
   let workers =
     List.init n_workers (fun worker_idx ->
