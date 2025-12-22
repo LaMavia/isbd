@@ -146,7 +146,14 @@ let filter eval (where_clause_opt : ColumnExpression.t option) =
       (match eval record where_clause with
        | Error err -> raise (Core.QueryTask.make_error err)
        | Ok (`DataBool (v : bool)) -> v
-       | Ok _ -> raise Core.QueryTask.(make_error [ { error = "_"; context = None } ]))
+       | Ok v ->
+         raise
+           Core.QueryTask.(
+             make_error
+               [ { error = "Unexpected non-bool value in filter during execution"
+                 ; context = Some (Printf.sprintf "value: %s" (Lib.Data.Types.to_str v))
+                 }
+               ]))
 ;;
 
 let map
@@ -179,6 +186,10 @@ let k_way_merge (type elem) cmp (streams : elem Seq.t array) =
   let state = ref MinHeap.empty in
   Array.iteri
     (fun i d ->
+       (* CCHeap.S.of_list is just as innefficient, 
+          and nixpkgs doesn't provide ocaml@5.4,
+          which has introduced a more efficient priority queue implementation - Pqueue 
+          *)
        let- v = d () in
        state := MinHeap.insert (i, v) !state)
     streams;
@@ -248,8 +259,6 @@ let group_chunks ~cols ~est_size ~max_group_size stream =
     let temp_dist = make_temp_chunk_file () in
     let cursor = Metastore.Store.write temp_dist cols group_stream in
     Metastore.Store.Internal.Cursor.close cursor;
-    (* Printf.eprintf "Finished writing\n"; *)
-    (* flush_all (); *)
     temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
   |> Array.of_seq
 ;;
@@ -296,21 +305,13 @@ module ExternalSortInternal = struct
           (2 * Obj.magic cursor)
           temp_dist;
         flush stderr;
-        cursor
-        |> Metastore.Store.read_cursor
-        |> List.of_seq
-        |> List.sort cmp
-        |> List.to_seq
-        |> Metastore.Store.write temp_dist cols
-        |> ignore
-        (* returns the same cursor *);
-        Unix.fsync cursor.map.fd;
+        sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
         if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
         then
           Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
         aux ()
       | Some (`Merge (i : int)) ->
-        let a_temp_dist, a_cursor =
+        let left_temp_dist, left_cursor =
           desc_array.(2 * i)
           |> Utils.Unwrap.option
                ~message:
@@ -318,7 +319,7 @@ module ExternalSortInternal = struct
                     "Invalid assumption: null left result %d for parent %d"
                     (2 * i)
                     i)
-        and b_temp_dist, b_cursor =
+        and right_temp_dist, right_cursor =
           desc_array.((2 * i) + 1)
           |> Utils.Unwrap.option
                ~message:
@@ -332,26 +333,24 @@ module ExternalSortInternal = struct
           "[merge-worker %d] merging %d, left:%s, right:%s into %s\n"
           worker_idx
           i
-          a_temp_dist
-          b_temp_dist
+          left_temp_dist
+          right_temp_dist
           own_temp_dist;
         flush stderr;
         let own_cursor =
           Fun.protect
             ~finally:(fun () ->
               Metastore.Store.Internal.Cursor.(
-                close a_cursor;
-                close b_cursor);
+                close left_cursor;
+                close right_cursor);
               Sys.(
-                remove a_temp_dist;
-                remove b_temp_dist))
+                remove left_temp_dist;
+                remove right_temp_dist))
             (fun () ->
-               let a_stream = Metastore.Store.read_cursor a_cursor
-               and b_stream = Metastore.Store.read_cursor b_cursor in
-               try
-                 Seq.sorted_merge cmp a_stream b_stream
-                 |> Metastore.Store.write own_temp_dist cols
-               with
+               let open Metastore.Store in
+               let a_stream = read_cursor left_cursor
+               and b_stream = read_cursor right_cursor in
+               try Seq.sorted_merge cmp a_stream b_stream |> write own_temp_dist cols with
                | exc ->
                  Sys.remove own_temp_dist;
                  raise exc)
