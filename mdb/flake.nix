@@ -51,6 +51,7 @@
               alcotest
               uuidm
               csv
+              containers
               # legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })

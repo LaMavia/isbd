@@ -166,27 +166,27 @@ let next_seq_array arr i =
     Some (i, v)
 ;;
 
-let k_way_merge cmp (streams : 'a Seq.t array) =
+let k_way_merge (type elem) cmp (streams : elem Seq.t array) =
   let open Utils.Let.Opt in
+  let module ElemOrder = struct
+    type t = int * elem
+
+    let compare (_, x) (_, y) = cmp x y
+  end
+  in
+  let module MinHeap = CCHeap.Make_from_compare (ElemOrder) in
   let streams = Array.map Seq.to_dispenser streams in
-  let get_val i d = d () |> Option.map (fun v -> i, v) in
-  let state = Array.mapi get_val streams in
+  let state = ref MinHeap.empty in
+  Array.iteri
+    (fun i d ->
+       let- v = d () in
+       state := MinHeap.insert (i, v) !state)
+    streams;
   let aux () =
-    let+ i, min_val =
-      Array.fold_right
-        (fun e u ->
-           let ret =
-             match e, u with
-             | None, u -> u
-             | (Some _ as l), None -> l
-             | (Some (_, x) as l), Some (_, y) when cmp x y <= 0 -> l
-             | _, u -> u
-           in
-           ret)
-        state
-        None
-    in
-    state.(i) <- get_val i streams.(i);
+    let+ state', (i, min_val) = MinHeap.take !state in
+    (match streams.(i) () with
+     | Some e -> state := MinHeap.insert (i, e) state'
+     | None -> state := state');
     min_val
   in
   Seq.of_dispenser aux
@@ -229,7 +229,7 @@ let group_eph_seq pred seq0 =
 
 let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
 
-let group_chunks ~cols ~cmp:_ ~est_size ~max_group_size stream =
+let group_chunks ~cols ~est_size ~max_group_size stream =
   let group_size = ref 0 in
   group_eph_seq
     (fun _ q ->
@@ -254,42 +254,19 @@ let group_chunks ~cols ~cmp:_ ~est_size ~max_group_size stream =
   |> Array.of_seq
 ;;
 
-(** [with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream]
+module ExternalSortInternal = struct
+  let sort_file_in_place ~temp_dist ~cursor ~cols ~cmp =
+    cursor
+    |> Metastore.Store.read_cursor
+    |> List.of_seq
+    |> List.sort cmp
+    |> List.to_seq
+    |> Metastore.Store.write temp_dist cols
+    |> ignore
+    (* returns the same cursor *);
+    Unix.fsync cursor.map.fd
+  ;;
 
-    1. splits [stream] of records with columns [cols] into groups of approximately [max_group_size] (estimated on per-record basis using [est_size]). The size can be exceeded by the estimated size of 1 record;
-
-    2. sorts them in memory using [in_memory_sort cmp];
-
-    3. writes them into temporary files on the disk;
-
-    4. merges them using [k_way_merge cmp];
-
-    5. evaluates [f] on the merged stream;
-
-    6. closes the merged stream, and deletes the temporary files.
-
-
-    [f] should consume the entire stream by the time it's done, because the resulting merged stream is ephemeral.
-    *)
-let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
-  let chunk_descriptors = group_chunks ~cols ~cmp ~est_size ~max_group_size stream in
-  let chunk_streams =
-    Array.map
-      (fun (_temp_dist, cursor) -> Metastore.Store.read_cursor cursor)
-      chunk_descriptors
-  in
-  let cleanup () =
-    Array.iter
-      (fun (temp_dist, cursor) ->
-         Metastore.Store.Internal.Cursor.close cursor;
-         Sys.remove temp_dist)
-      chunk_descriptors;
-    Gc.full_major ()
-  in
-  Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
-;;
-
-module ParallelExternalSortInternal = struct
   let worker_main
         ~worker_idx
         ~pending_deps_array
@@ -396,8 +373,47 @@ module ParallelExternalSortInternal = struct
   ;;
 end
 
-let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size f stream =
-  let chunk_descriptors = group_chunks ~cols ~cmp ~est_size ~max_group_size stream in
+(** [with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream]
+
+    1. splits [stream] of records with columns [cols] into groups of approximately [max_group_size] (estimated on per-record basis using [est_size]). The size can be exceeded by the estimated size of 1 record;
+
+    2. sorts them in memory using [in_memory_sort cmp];
+
+    3. writes them into temporary files on the disk;
+
+    4. merges them using [k_way_merge cmp];
+
+    5. evaluates [f] on the merged stream;
+
+    6. closes the merged stream, and deletes the temporary files.
+
+
+    [f] should consume the entire stream by the time it's done, because the resulting merged stream is ephemeral.
+    *)
+let with_external_sort ~chunk_descriptors ~cols ~cmp f =
+  (* let chunk_descriptors = group_chunks ~cols ~est_size ~max_group_size stream in *)
+  let chunk_streams =
+    Array.map
+      (fun (temp_dist, cursor) ->
+         Printf.eprintf "[%s] sorting %s\n" __FUNCTION__ temp_dist;
+         flush stderr;
+         ExternalSortInternal.sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
+         Metastore.Store.read_cursor cursor)
+      chunk_descriptors
+  in
+  let cleanup () =
+    Array.iter
+      (fun (temp_dist, cursor) ->
+         Metastore.Store.Internal.Cursor.close cursor;
+         Sys.remove temp_dist)
+      chunk_descriptors;
+    Gc.full_major ()
+  in
+  Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
+;;
+
+let with_parallel_external_sort ~chunk_descriptors ~n_workers ~cols ~cmp f =
+  (* let chunk_descriptors = group_chunks ~cols ~est_size ~max_group_size stream in *)
   let n_groups = Array.length chunk_descriptors in
   (* [pending_deps_array.(i)] is the number of pending child tasks for the task [i], for [i] > 0.
 
@@ -429,7 +445,7 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
   let workers =
     List.init n_workers (fun worker_idx ->
       Domain.spawn
-        (ParallelExternalSortInternal.worker_main
+        (ExternalSortInternal.worker_main
            ~worker_idx
            ~pending_deps_array
            ~cmp
@@ -449,6 +465,29 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
   @@ fun () -> result_cursor |> Metastore.Store.read_cursor |> f
 ;;
 
-(* Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f *)
-
-(* Atomic.compare_and_set *)
+let with_generic_external_sort
+      ~n_workers
+      ~cols
+      ~cmp
+      ~est_size
+      ~max_group_size
+      ~k_way_threshold
+      f
+      stream
+  =
+  let chunk_descriptors = group_chunks ~cols ~est_size ~max_group_size stream in
+  let n_groups = Array.length chunk_descriptors in
+  if n_groups <= k_way_threshold
+  then (
+    Printf.eprintf "[%s] %d ≤ %d: k-way sort\n" __FUNCTION__ n_groups k_way_threshold;
+    flush stderr;
+    with_external_sort ~chunk_descriptors ~cols ~cmp f)
+  else (
+    Printf.eprintf
+      "[%s] %d > %d: paraller log sort\n"
+      __FUNCTION__
+      n_groups
+      k_way_threshold;
+    flush stderr;
+    with_parallel_external_sort ~chunk_descriptors ~n_workers ~cols ~cmp f)
+;;

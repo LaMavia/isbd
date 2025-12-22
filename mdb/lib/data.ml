@@ -60,5 +60,5 @@ let approx_size (records : data_record Seq.t) =
 ;;
 
 let string_of_record (r : data_record) =
-  Array.to_list r |> List.map Types.to_str |> String.concat "; "
+  Printf.sprintf "(%s)" (Array.to_list r |> List.map Types.to_str |> String.concat "; ")
 ;;
