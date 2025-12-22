@@ -210,7 +210,7 @@ let in_memory_sort cmp stream =
 ;;
 
 (** WARNING: Not thread-safe *)
-let group_eph_seq pred seq0 =
+let group_eph_seq weight max_weight seq0 =
   let is_done = ref false in
   let seq = ref seq0 in
   Seq.of_dispenser
@@ -222,6 +222,7 @@ let group_eph_seq pred seq0 =
     | Seq.Nil -> None
     | Seq.Cons (seed, tail) ->
       seq := tail;
+      let group_weight = ref (weight seed) in
       Option.Some
         (Seq.cons
            seed
@@ -230,29 +231,22 @@ let group_eph_seq pred seq0 =
               | Seq.Nil ->
                 is_done := true;
                 None
-              | Seq.Cons (e, tail') when pred seed e ->
-                seq := tail';
-                Some e
               | Seq.Cons (e, tail') ->
-                seq := Seq.cons e tail';
-                None))))
+                let e_weight = weight e in
+                if !group_weight + e_weight <= max_weight
+                then (
+                  group_weight := !group_weight + e_weight;
+                  seq := tail';
+                  Some e)
+                else (
+                  seq := Seq.cons e tail';
+                  None)))))
 ;;
 
 let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
 
 let group_chunks ~cols ~est_size ~max_group_size stream =
-  let group_size = ref 0 in
-  group_eph_seq
-    (fun _ q ->
-       let q_size = est_size q in
-       if !group_size + q_size > max_group_size
-       then (
-         group_size := q_size;
-         false)
-       else (
-         group_size := !group_size + q_size;
-         true))
-    stream
+  group_eph_seq est_size max_group_size stream
   |> Seq.mapi (fun _i group_stream ->
     Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
     flush stderr;
