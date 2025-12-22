@@ -65,7 +65,7 @@ let eval_binary
     | `MULTIPLY, `DataInt l, `DataInt r -> Ok (`DataInt (Int64.mul l r))
     | `DIVIDE, `DataInt l, `DataInt r -> Ok (`DataInt (Int64.div l r))
     | `EQUAL, l, r -> Ok (`DataBool (l = r))
-    | `NOT_EQUAL, l, r -> Ok (`DataBool (l != r))
+    | `NOT_EQUAL, l, r -> Ok (`DataBool (l <> r))
     | `LESS_THAN, `DataInt l, `DataInt r -> Ok (`DataBool (l < r))
     | `LESS_EQUAL, `DataInt l, `DataInt r -> Ok (`DataBool (l <= r))
     | `GREATER_THAN, `DataInt l, `DataInt r -> Ok (`DataBool (l > r))
@@ -198,6 +198,7 @@ let in_memory_sort cmp stream =
   x
 ;;
 
+(** WARNING: Not thread-safe *)
 let group_eph_seq pred seq0 =
   let is_done = ref false in
   let seq = ref seq0 in
@@ -227,45 +228,6 @@ let group_eph_seq pred seq0 =
 ;;
 
 let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
-
-(* let parallel_shuffle_map_eph_seq ~n_workers f seq = *)
-(*   let result_queue_lock = Mutex.create () *)
-(*   and result_queue = Queue.create () *)
-(*   and result_queue_empty_cond = Condition.create () *)
-(*   and input_queue_lock = Mutex.create () *)
-(*   and input_queue = Queue.create () *)
-(*   and input_queue_empty_cond = Condition.create () *)
-(*   and should_stop_atom = Atomic.make false in *)
-(*   let seq_dispenser = Seq.to_dispenser seq in *)
-(*   let worker_aux () = *)
-(*     let keep_going = ref true in *)
-(*     while !keep_going do *)
-(*       let next_input_opt = *)
-(*         Mutex.protect input_queue_lock (fun () -> *)
-(*           while Queue.is_empty input_queue && not (Atomic.get should_stop_atom) do *)
-(*             Condition.wait input_queue_empty_cond input_queue_lock *)
-(*           done; *)
-(*           Queue.take_opt input_queue) *)
-(*       in *)
-(*       match next_input_opt with *)
-(*       | None -> keep_going := false *)
-(*       | Some inp -> *)
-(*         let res = f inp in *)
-(*         Mutex.protect result_queue_lock (fun () -> *)
-(*           Queue.add res result_queue; *)
-(*           Condition.broadcast result_queue_empty_cond) *)
-(*     done *)
-(*   in *)
-(*   let dispenser_aux () = *)
-(*     match seq_dispenser () with *)
-(*     | None -> Atomic.set should_stop_atom true *)
-(*     | Some inp -> *)
-(*       Mutex.protect input_queue_lock (fun () -> *)
-(*         Queue.add inp input_queue; *)
-(*         Condition.broadcast input_queue_empty_cond) *)
-(*   in *)
-(*   () *)
-(* ;; *)
 
 let group_chunks ~cols ~cmp:_ ~est_size ~max_group_size stream =
   let group_size = ref 0 in
@@ -327,90 +289,112 @@ let with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream =
   Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
 ;;
 
-let worker_main
-      ~worker_idx
-      ~pending_deps_array
-      ~cols
-      ~cmp
-      ~desc_array
-      ~task_queue
-      ~task_queue_lock
-      ~stderr_lock:_
-      ()
-  =
-  let rec aux () =
-    match Mutex.protect task_queue_lock (fun () -> Queue.take_opt task_queue) with
-    | None -> ()
-    | Some (`Sort (i : int)) ->
-      let temp_dist, cursor =
-        desc_array.(i)
-        |> Utils.Unwrap.option
-             ~message:(Printf.sprintf "Invalid assumption: no cursor %d to sort" i)
-      in
-      cursor
-      |> Metastore.Store.read_cursor
-      |> List.of_seq
-      |> List.sort cmp
-      |> List.to_seq
-      |> Metastore.Store.write temp_dist cols
-      |> ignore
-      (* returns the same cursor *);
-      if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
-      then Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
-      aux ()
-    | Some (`Merge (i : int)) ->
-      let a_temp_dist, a_cursor =
-        desc_array.(2 * i)
-        |> Utils.Unwrap.option
-             ~message:
-               (Printf.sprintf
-                  "Invalid assumption: null left result %d for parent %d"
-                  (2 * i)
-                  i)
-      and b_temp_dist, b_cursor =
-        desc_array.((2 * i) + 1)
-        |> Utils.Unwrap.option
-             ~message:
-               (Printf.sprintf
-                  "Invalid assumption: null right result %d for parent %d"
-                  ((2 * i) + 1)
-                  i)
-      in
-      let own_temp_dist = make_temp_chunk_file () in
-      let own_cursor =
-        Fun.protect
-          ~finally:(fun () ->
-            Metastore.Store.Internal.Cursor.(
-              close a_cursor;
-              close b_cursor);
-            Sys.(
-              remove a_temp_dist;
-              remove b_temp_dist))
-          (fun () ->
-             let a_stream = Metastore.Store.read_cursor a_cursor
-             and b_stream = Metastore.Store.read_cursor b_cursor in
-             try
-               Seq.sorted_merge cmp a_stream b_stream
-               |> Metastore.Store.write own_temp_dist cols
-             with
-             | exc ->
-               Sys.remove own_temp_dist;
-               raise exc)
-      in
-      desc_array.(i) <- Some (own_temp_dist, own_cursor);
-      if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
-      then Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
-      aux ()
-  in
-  try aux () with
-  | exc ->
-    Printf.eprintf
-      "[merge-worker %d] Exception: %s;\n  %s\n"
-      worker_idx
-      (Printexc.to_string exc)
-      (Printexc.get_backtrace ());
-    raise exc
-;;
+module ParallelExternalSortInternal = struct
+  let worker_main
+        ~worker_idx
+        ~pending_deps_array
+        ~cols
+        ~cmp
+        ~desc_array
+        ~task_queue
+        ~task_queue_lock
+        ~stderr_lock:_
+        ()
+    =
+    let rec aux () =
+      match Mutex.protect task_queue_lock (fun () -> Queue.take_opt task_queue) with
+      | None ->
+        Printf.eprintf "[merge-worker %d] no longer needed, stopping\n" worker_idx;
+        ()
+      | Some (`Sort (i : int)) ->
+        let temp_dist, cursor =
+          desc_array.(i)
+          |> Utils.Unwrap.option
+               ~message:(Printf.sprintf "Invalid assumption: no cursor %d to sort" i)
+        in
+        Printf.eprintf
+          "[merge-worker %d] sorting group %d, cursor %d, file %s\n"
+          worker_idx
+          (i - (Array.length pending_deps_array / 2))
+          (2 * Obj.magic cursor)
+          temp_dist;
+        flush stderr;
+        cursor
+        |> Metastore.Store.read_cursor
+        |> List.of_seq
+        |> List.sort cmp
+        |> List.to_seq
+        |> Metastore.Store.write temp_dist cols
+        |> ignore
+        (* returns the same cursor *);
+        Unix.fsync cursor.map.fd;
+        if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
+        then
+          Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
+        aux ()
+      | Some (`Merge (i : int)) ->
+        let a_temp_dist, a_cursor =
+          desc_array.(2 * i)
+          |> Utils.Unwrap.option
+               ~message:
+                 (Printf.sprintf
+                    "Invalid assumption: null left result %d for parent %d"
+                    (2 * i)
+                    i)
+        and b_temp_dist, b_cursor =
+          desc_array.((2 * i) + 1)
+          |> Utils.Unwrap.option
+               ~message:
+                 (Printf.sprintf
+                    "Invalid assumption: null right result %d for parent %d"
+                    ((2 * i) + 1)
+                    i)
+        in
+        let own_temp_dist = make_temp_chunk_file () in
+        Printf.eprintf
+          "[merge-worker %d] merging %d, left:%s, right:%s into %s\n"
+          worker_idx
+          i
+          a_temp_dist
+          b_temp_dist
+          own_temp_dist;
+        flush stderr;
+        let own_cursor =
+          Fun.protect
+            ~finally:(fun () ->
+              Metastore.Store.Internal.Cursor.(
+                close a_cursor;
+                close b_cursor);
+              Sys.(
+                remove a_temp_dist;
+                remove b_temp_dist))
+            (fun () ->
+               let a_stream = Metastore.Store.read_cursor a_cursor
+               and b_stream = Metastore.Store.read_cursor b_cursor in
+               try
+                 Seq.sorted_merge cmp a_stream b_stream
+                 |> Metastore.Store.write own_temp_dist cols
+               with
+               | exc ->
+                 Sys.remove own_temp_dist;
+                 raise exc)
+        in
+        desc_array.(i) <- Some (own_temp_dist, own_cursor);
+        if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
+        then
+          Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
+        aux ()
+    in
+    try aux () with
+    | exc ->
+      Printf.eprintf
+        "[merge-worker %d] Exception: %s;\n  %s\n"
+        worker_idx
+        (Printexc.to_string exc)
+        (Printexc.get_backtrace ());
+      raise exc
+  ;;
+end
 
 let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size f stream =
   let chunk_descriptors = group_chunks ~cols ~cmp ~est_size ~max_group_size stream in
@@ -445,7 +429,7 @@ let with_parallel_external_sort ~n_workers ~cols ~cmp ~est_size ~max_group_size 
   let workers =
     List.init n_workers (fun worker_idx ->
       Domain.spawn
-        (worker_main
+        (ParallelExternalSortInternal.worker_main
            ~worker_idx
            ~pending_deps_array
            ~cmp

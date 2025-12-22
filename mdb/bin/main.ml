@@ -3,17 +3,18 @@ let () =
   let open Web.Planner.Eval in
   let open Lib in
   Memtrace.trace_if_requested ();
-  let n = 10_000_000L in
+  let n = 100_000_000L in
   let stream : Data.data_record Seq.t =
-    Seq.init (Int64.to_int n) (fun _ -> [| `DataInt (Random.int64 n) |])
+    Seq.init (Int64.to_int n) (fun _ ->
+      [| `DataInt (Random.int64 n); `DataInt (Random.int64 n) |])
     |> Seq.take (Int64.to_int n)
     |> Seq.once
   in
   stream
   |> with_parallel_external_sort
-       ~n_workers:5
-       ~cols:[| "col1", `ColInt |]
-       ~cmp:(fun a b -> compare a.(0) b.(0))
+       ~n_workers:10
+       ~cols:[| "col1", `ColInt; "col2", `ColInt |]
+       ~cmp:compare
        ~est_size:Data.approx_record_size
        ~max_group_size:(Web.Metastore.Const.buffer_size / 8)
      @@ Seq.iter ignore

@@ -81,7 +81,7 @@ let make_copy_selector td query =
   match query.destination_columns with
   | None -> Ok Fun.id
   | Some mappings ->
-    if Array.length mappings != Array.length td.columns
+    if Array.length mappings <> Array.length td.columns
     then
       Error
         Models.MultipleProblemsError.
