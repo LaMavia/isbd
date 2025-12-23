@@ -1,9 +1,9 @@
 let option ~message = function
   | Some v -> v
-  | None -> raise_notrace (Failure message)
+  | None -> raise (Failure message)
 ;;
 
 let result ~exc = function
   | Ok v -> v
-  | Error e -> raise_notrace (exc e)
+  | Error e -> raise (exc e)
 ;;

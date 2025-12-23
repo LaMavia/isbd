@@ -1,0 +1,7 @@
+{
+  "queryDefinition": {
+    "sourceFilepath": "./people-500000.csv",
+    "destinationTableName": "person",
+    "doesCsvContainHeader": true
+  }
+}

@@ -5,6 +5,7 @@ open Core
 open Models.ExecuteQueryRequest
 open Models.QueryStatus
 open QueryTask
+open! Utils.Ops
 
 let process_select ms tq task_id query_definition query =
   let open Utils.Let.Opt in
@@ -47,22 +48,25 @@ let process_select ms tq task_id query_definition query =
            with_record_stream (fun data ->
              let open Planner.Eval in
              let eval = make_eval_ce td_opt in
+             let result_td =
+               Metastore.TableData.
+                 { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
+                 ; id
+                 ; columns =
+                     column_types
+                     |> List.mapi (fun i t ->
+                       ( Printf.sprintf "c%d" i
+                       , Models.ColumnExpression.lib_of_expr_type_exc t ))
+                     |> Array.of_list
+                 ; files = []
+                 }
+             in
              Seq.filter (filter eval query.where_clause) data
              |> Seq.map (map eval query.column_clauses)
              |> Seq.map Array.of_list
-             |> Metastore.Store.create_result
-                  Metastore.TableData.
-                    { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
-                    ; id
-                    ; columns =
-                        column_types
-                        |> List.mapi (fun i t ->
-                          ( Printf.sprintf "col-%d" i
-                          , Models.ColumnExpression.lib_of_expr_type_exc t ))
-                        |> Array.of_list
-                    ; files = []
-                    }
-                  ms;
+             |> with_sort ~ms ~td:result_td ~order_by_clause_opt:query.order_by_clause
+                @@ limit ~limit_clause_opt:query.limit_clause
+                @> Metastore.Store.create_result result_td ms;
              TaskQueue.add_result
                task_id
                (Ok { query_definition; result_id = Some id })
@@ -177,14 +181,15 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
        with
        | QueryTaskError e -> TaskQueue.add_result task_id (Error e) Failed tq
        | e ->
+         let e_stack = Printexc.get_backtrace () in
          let e_str = Printexc.to_string e in
-         let e_name = Printexc.exn_slot_name e in
+         (* let e_name = Printexc.exn_slot_name e in *)
          TaskQueue.add_result
            task_id
            (Error
               Models.MultipleProblemsError.
-                [ { error = Printf.sprintf "Unexpected error %s" e_name
-                  ; context = Some e_str
+                [ { error = Printf.sprintf "Unexpected error %s" e_str
+                  ; context = Some e_stack
                   }
                 ])
            Failed

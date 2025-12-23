@@ -65,10 +65,15 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~len:suggested_buffer_size
         ~actual_length:buffer_size
     in
+    let should_gc = ref false in
     let rec give_record () =
       match Seq.uncons !parsed_record_seq with
       | Option.None when IC.position input_cursor >= chunks_len -> Option.None
       | Option.Some (h, t) ->
+        if !should_gc
+        then (
+          should_gc := false;
+          Gc.major ());
         parsed_record_seq := t;
         Option.Some h
       | Option.None ->
@@ -121,6 +126,7 @@ module Make (IC : Cursor.CursorInterface) = struct
         parsed_record_seq := Seq.of_dispenser aux;
         empty fraglen_bfs;
         empty bfs;
+        should_gc := true;
         give_record ()
     in
     logcols, Seq.of_dispenser give_record

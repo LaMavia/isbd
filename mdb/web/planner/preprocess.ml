@@ -27,7 +27,8 @@ let rec preprocess_ce : ColumnExpression.t -> ColumnExpression.t =
 let preprocess_select_query : SelectQuery.t -> SelectQuery.t =
   let open SelectQuery in
   fun q ->
-    { column_clauses = List.map preprocess_ce q.column_clauses
+    { q with
+      column_clauses = List.map preprocess_ce q.column_clauses
     ; where_clause = Option.map preprocess_ce q.where_clause
     }
 ;;

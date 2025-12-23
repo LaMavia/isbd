@@ -1,7 +1,7 @@
 let alt (fs : (string * (Yojson.Safe.t -> 'b)) list) (v : Yojson.Safe.t) : 'b =
   let rec aux fs e =
     match fs with
-    | [] -> raise_notrace e
+    | [] -> raise e
     | (_l, f) :: fs' ->
       (try
          (* Printf.eprintf "[%s] Trying %s on %s\n" __FUNCTION__ l (Yojson.Safe.to_string v); *)

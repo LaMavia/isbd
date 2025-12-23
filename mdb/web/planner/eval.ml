@@ -484,3 +484,37 @@ let with_generic_external_sort
     flush stderr;
     with_parallel_external_sort ~chunk_descriptors ~n_workers ~cols ~cmp f)
 ;;
+
+let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
+  match order_by_clause_opt with
+  | Some order_by_clause ->
+    let asc =
+      Array.map
+        (fun OrderByExpression.{ ascending; _ } -> if ascending then 1 else 0)
+        order_by_clause
+    in
+    let cmp_length = Array.length order_by_clause in
+    let cmp a b =
+      Seq.init cmp_length (fun i ->
+        let ci = order_by_clause.(i).column_index in
+        asc.(i) * compare a.(ci) b.(ci))
+      |> Seq.find (( <> ) 0)
+      |> Option.value ~default:0
+    in
+    stream
+    |> with_generic_external_sort
+         ~n_workers:4
+         ~cols:Metastore.TableData.(td.columns)
+         ~cmp
+         ~est_size:Lib.Data.approx_record_size
+         ~max_group_size:(Metastore.Const.buffer_size / Array.length td.columns)
+         ~k_way_threshold:40
+         f
+  | None -> f stream
+;;
+
+let limit ~limit_clause_opt stream =
+  match limit_clause_opt with
+  | Some LimitExpression.{ limit } -> Seq.take limit stream
+  | None -> stream
+;;
