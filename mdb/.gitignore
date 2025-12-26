@@ -20,3 +20,6 @@ results/*
 !results/.*
 
 *.zst
+
+data/*
+!data/.gitkeep

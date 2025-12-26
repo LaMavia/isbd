@@ -189,7 +189,7 @@ module Columns = struct
       let str_a = get_buffer bfs bi in
       let compressed_sub = Array1.sub str_a.buffer 0 flens.(fi) in
       let decompressed_strings =
-        LZ4.Bigbytes.decompress ~length:total_str_length compressed_sub
+        LZ4_Storage.decompress ~length:total_str_length compressed_sub
       in
       let old_buffer = str_a.buffer in
       str_a.buffer <- Stateful_buffers.copy_bytes str_a.buffer;
@@ -197,17 +197,18 @@ module Columns = struct
       let len = Array1.dim decompressed_strings in
       if len > str_a.length
       then set_buffer bfs bi decompressed_strings
-      else Array1.(blit decompressed_strings (sub str_a.buffer 0 len))
+      else (
+        Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
+        free_bytes decompressed_strings)
     ;;
 
     let encode_fragments bfs bi =
       let open Array1 in
       let str_a = get_buffer bfs bi in
-      let compressed_strings =
-        LZ4.Bigbytes.compress (sub str_a.buffer 0 str_a.position)
-      in
+      let compressed_strings = LZ4_Storage.compress (sub str_a.buffer 0 str_a.position) in
       let len = dim compressed_strings in
       blit compressed_strings (sub str_a.buffer 0 len);
+      free_bytes compressed_strings;
       str_a.position <- len;
       str_a.length <- len;
       IntColumn.encode_fragments bfs (bi + 1)

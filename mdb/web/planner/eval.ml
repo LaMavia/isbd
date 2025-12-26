@@ -165,14 +165,6 @@ let map
   |> Utils.Unwrap.result ~exc:Core.QueryTask.make_error
 ;;
 
-let next_seq_array arr i =
-  match arr.(i) () with
-  | Seq.Nil -> None
-  | Seq.Cons (v, rest) ->
-    arr.(i) <- rest;
-    Some (i, v)
-;;
-
 let k_way_merge (type elem) cmp (streams : elem Seq.t array) =
   let open Utils.Let.Opt in
   let module ElemOrder = struct
@@ -205,7 +197,7 @@ let k_way_merge (type elem) cmp (streams : elem Seq.t array) =
 
 let in_memory_sort cmp stream =
   let x = stream |> List.of_seq |> List.sort cmp |> List.to_seq in
-  Gc.major ();
+  (* Gc.major (); *)
   x
 ;;
 
@@ -399,8 +391,8 @@ let with_external_sort ~chunk_descriptors ~cols ~cmp f =
       (fun (temp_dist, cursor) ->
          Metastore.Store.Internal.Cursor.close cursor;
          Sys.remove temp_dist)
-      chunk_descriptors;
-    Gc.full_major ()
+      chunk_descriptors
+    (* Gc.full_major () *)
   in
   Fun.protect ~finally:cleanup @@ fun () -> k_way_merge cmp chunk_streams |> f
 ;;

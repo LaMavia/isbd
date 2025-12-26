@@ -137,3 +137,23 @@ let print_buffers label (bfs : t) =
        Utils.Debugging.print_hex_bytes "bytes" b.buffer)
     bfs
 ;;
+
+module LZ4_Storage : LZ4.S with type storage := big_bytes = struct
+  let compress_into input output = LZ4.Bigbytes.compress_into input output
+
+  let compress input =
+    let length = LZ4.compress_bound (Array1.dim input) in
+    let output = create_bytes length in
+    let length' = compress_into input output in
+    if length' <> length then Array1.sub output 0 length' else output
+  ;;
+
+  let decompress_into input output = LZ4.Bigbytes.decompress_into input output
+
+  let decompress ~length input =
+    if length < 0 then invalid_arg "LZ4.decompress: negative length";
+    let output = create_bytes length in
+    let length' = decompress_into input output in
+    if length' <> length then Array1.sub output 0 length' else output
+  ;;
+end
