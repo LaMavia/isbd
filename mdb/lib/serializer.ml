@@ -33,7 +33,8 @@ module Make (OC : Cursor.CursorInterface) = struct
     output_cursor
     |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes
-    |> ignore
+    |> ignore;
+    free bfs
   ;;
 
   let serialize
@@ -43,8 +44,8 @@ module Make (OC : Cursor.CursorInterface) = struct
         (record_stream : Data.data_record Seq.t)
         (output_cursor : OC.t)
     =
-    let open Stateful_buffers in
-    let open Bigarray in
+    let open! Stateful_buffers in
+    let open! Bigarray in
     let buffer_size = LZ4.compress_bound buffer_size_suggestion in
     let phys_lens =
       logcols
@@ -138,7 +139,9 @@ module Make (OC : Cursor.CursorInterface) = struct
     then (
       encode_fragments ();
       dump_buffers ());
-    write_columns ~encode logcols output_cursor
+    write_columns ~encode logcols output_cursor;
+    free record_bfs;
+    free chunk_bfs
   ;;
 end
 

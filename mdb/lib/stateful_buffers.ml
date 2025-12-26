@@ -2,6 +2,15 @@ open Bigarray
 
 type big_bytes = (char, int8_unsigned_elt, c_layout) Array1.t
 
+module Internal = struct
+  external create_big_bytes
+    :  (int[@untagged])
+    -> big_bytes
+    = "caml_create_big_bytes_byte" "caml_create_big_bytes"
+
+  external free_big_bytes : big_bytes -> unit = "caml_free_big_bytes"
+end
+
 type stb =
   { mutable buffer : big_bytes
   ; mutable position : int
@@ -61,19 +70,23 @@ let set_int64_be =
   done
 ;;
 
-let get_buffer (bfs : t) (i : int) = bfs.(i)
-
-let set_buffer (bfs : t) (i : int) a =
-  bfs.(i) <- { buffer = a; position = 0; length = Array1.dim a }
-;;
-
-let create_bytes len = Array1.create Char c_layout len
+let create_bytes len = Internal.create_big_bytes len
+let free_bytes ba = Internal.free_big_bytes ba
 
 let create_stb len actual_len =
   { buffer = create_bytes actual_len; position = 0; length = len }
 ;;
 
+let free_stb { buffer; _ } = free_bytes buffer
 let create ~n ~len ~actual_length = Array.init n (fun _ -> create_stb len actual_length)
+let free (bfs : t) = Array.iter (fun { buffer; _ } -> free_bytes buffer) bfs
+let get_buffer (bfs : t) (i : int) = bfs.(i)
+
+(** Frees the old buffer, and sets its slot to the new one *)
+let set_buffer (bfs : t) (i : int) a =
+  free_stb bfs.(i);
+  bfs.(i) <- { buffer = a; position = 0; length = Array1.dim a }
+;;
 
 let big_bytes_of_string s =
   let bts = String.to_bytes s in

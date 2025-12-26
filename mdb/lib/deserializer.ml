@@ -28,12 +28,17 @@ module Make (IC : Cursor.CursorInterface) = struct
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
     let columns = Column.Columns.ColumnInfoColumn.deserialize_seq bfs 0 |> Array.of_seq in
+    free bfs;
     columns, cols_offset
   ;;
 
   let deserialize ?(decode = true) (input_cursor : IC.t) =
+    Printf.eprintf "reading columns\n%!";
     let logcols, chunks_len = read_columns ~decode input_cursor in
-    Gc.major ();
+    Printf.eprintf
+      "[%s] columns=%s\n%!"
+      __FUNCTION__
+      (Array.to_list logcols |> List.map fst |> String.concat ", ");
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
@@ -65,15 +70,18 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~len:suggested_buffer_size
         ~actual_length:buffer_size
     in
-    let should_gc = ref false in
+    (* let should_gc = ref false in *)
     let rec give_record () =
       match Seq.uncons !parsed_record_seq with
-      | Option.None when IC.position input_cursor >= chunks_len -> Option.None
+      | Option.None when IC.position input_cursor >= chunks_len ->
+        free fraglen_bfs;
+        free bfs;
+        Option.None
       | Option.Some (h, t) ->
-        if !should_gc
-        then (
-          should_gc := false;
-          Gc.major ());
+        (* if !should_gc *)
+        (* then ( *)
+        (*   should_gc := false; *)
+        (*   Gc.full_major ()); *)
         parsed_record_seq := t;
         Option.Some h
       | Option.None ->
@@ -126,7 +134,7 @@ module Make (IC : Cursor.CursorInterface) = struct
         parsed_record_seq := Seq.of_dispenser aux;
         empty fraglen_bfs;
         empty bfs;
-        should_gc := true;
+        (* should_gc := true; *)
         give_record ()
     in
     logcols, Seq.of_dispenser give_record

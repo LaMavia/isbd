@@ -68,7 +68,7 @@ module MMapCursor = struct
   module ManagedMMap = struct
     open Bigarray
 
-    let page_size = 16 * 1024
+    let page_size = 64_000_000
     let page_size_f = float_of_int page_size
 
     type arr = (char, int8_unsigned_elt, c_layout) Array1.t
@@ -110,8 +110,7 @@ module MMapCursor = struct
           r
         in
         a.size <- a.size + len_written;
-        a.array <- map_file_descr a.fd;
-        Gc.major ());
+        a.array <- map_file_descr a.fd);
       Array1.(blit bts (sub a.array offset length))
     ;;
   end

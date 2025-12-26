@@ -21,7 +21,6 @@ let byte_of_col = function
 module type LogicalColumn = sig
   type t
 
-  val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
   val serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit
   val decode_fragments : Stateful_buffers.t -> int array -> int -> unit
   val encode_fragments : Stateful_buffers.t -> int -> unit
@@ -113,6 +112,7 @@ module Columns = struct
       let enc_a = create_stb max_enc_len max_enc_len in
       Seq.of_dispenser (encode_delta a) |> Seq.iter (encode_vle enc_a);
       blit (sub enc_a.buffer 0 enc_a.position) (sub a.buffer 0 enc_a.position);
+      free_stb enc_a;
       a.position <- enc_a.position
 
     and encode_delta a =
@@ -191,7 +191,9 @@ module Columns = struct
       let decompressed_strings =
         LZ4.Bigbytes.decompress ~length:total_str_length compressed_sub
       in
+      let old_buffer = str_a.buffer in
       str_a.buffer <- Stateful_buffers.copy_bytes str_a.buffer;
+      Stateful_buffers.free_bytes old_buffer;
       let len = Array1.dim decompressed_strings in
       if len > str_a.length
       then set_buffer bfs bi decompressed_strings
@@ -271,16 +273,6 @@ functor
   struct
     let physical_length = V.physical_length
 
-    let load_mut chunk bfs frag_lengths frag_i =
-      for i = 0 to physical_length do
-        let buffer = Stateful_buffers.get_buffer bfs (frag_i + i) in
-        let len = frag_lengths.(frag_i + i) in
-        Array1.(blit Chunk.(sub chunk.data chunk.pos len) buffer.buffer);
-        Chunk.(chunk.pos <- chunk.pos + len)
-      done
-    ;;
-
-    (** TODO: Add error handling, and dependency on [V] *)
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =
       V.serialize_mut
     ;;
