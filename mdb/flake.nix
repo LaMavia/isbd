@@ -172,9 +172,11 @@
           legacyPackages = nixpkgs.legacyPackages.${system};
           pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           ocamlPackages = legacyPackages.ocamlPackages;
+          llvm = pkgs.llvmPackages_latest;
+
         in
         {
-          default = legacyPackages.mkShell {
+          default = legacyPackages.mkShell rec {
 
             packages = (with pkgs; [
               heaptrack
@@ -186,6 +188,11 @@
               perf
               ttyplot
               unixtools.xxd
+              cmake
+              llvm.lldb
+
+              clang-tools
+              llvm.clang
               (callPackage ./packages/ocaml_lz4.nix { })
               # (callPackage ./packages/ocaml_memtrace_viewer.nix { })
 
@@ -203,6 +210,23 @@
             inputsFrom = [
               self.packages.${system}.mdb
             ];
+
+            buildInputs = [
+              llvm.libcxx
+            ];
+
+
+            CPATH = builtins.concatStringsSep ":" [
+              (lib.makeSearchPathOutput "dev" "include" [ llvm.libcxx pkgs.openssl ])
+              (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+            ];
+
+            shellHook = ''
+              # Augment the dynamic linker path
+              export "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${CPATH}"
+              export "LIBCLANG_PATH=${pkgs.libclang.lib}/lib";
+            '';
+
           };
         });
     };
