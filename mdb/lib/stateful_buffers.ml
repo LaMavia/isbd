@@ -28,6 +28,14 @@ module External = struct
     -> (int64[@unboxed])
     -> unit
     = "caml_set_int64_be_byte" "caml_set_int64_be"
+
+  external encode_vle
+    :  big_bytes
+    -> big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_encode_vle_byte" "caml_encode_vle"
 end
 
 type stb =
