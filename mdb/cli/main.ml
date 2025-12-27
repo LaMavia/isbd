@@ -23,7 +23,7 @@ let () =
   Arg.parse speclist anon_fun usage_msg;
   let path = List.hd !input_files in
   let cursor = C.create path |> Result.get_ok in
-  let n = 10_000_000 in
+  let n = 1_000 in
   match !mode with
   | Serialize ->
     let cols =
@@ -34,12 +34,11 @@ let () =
       |]
     in
     TestSerializer.serialize
-      ~encode:false
       32_000_000
       cols
       (Seq.init n (fun i ->
          [| `DataInt (Int64.of_int (i + 1))
-          ; `DataInt (Int64.mul 432435L (Int64.of_int (i + 1)))
+          ; `DataInt (Int64.mul 2L (Int64.of_int (i + 1)))
           ; `DataVarchar "Hello"
           ; `DataVarchar "There"
          |]))
@@ -47,12 +46,12 @@ let () =
     C.truncate cursor;
     C.close cursor;
     let t2 = Unix.time () in
-    Unix.sleepf 0.5;
+    (* Unix.sleepf 0.5; *)
     let t3 = Unix.time () in
     Printf.eprintf "[t-finish] serialization: %fs, gc: %fs\n%!" (t2 -. t1) (t3 -. t1)
   | Deserialize ->
     let t1 = Unix.time () in
-    let columns, stream = TestDeserializer.deserialize ~decode:false cursor in
+    let columns, stream = TestDeserializer.deserialize cursor in
     stream
     |> Test_func.test_func columns
     |> Array.iter2
@@ -69,6 +68,6 @@ let () =
     (* Unix.sleep 1; *)
     (* Gc.full_major (); *)
     let t3 = Unix.time () in
-    Unix.sleepf 0.5;
+    (* Unix.sleepf 0.5; *)
     Printf.eprintf "[t-finish] deserialization: %fs, gc: %fs\n%!" (t2 -. t1) (t3 -. t1)
 ;;

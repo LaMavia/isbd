@@ -6,6 +6,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)                                                   \
+  ((byte) & 0x80 ? '1' : '0'), ((byte) & 0x40 ? '1' : '0'),                    \
+      ((byte) & 0x20 ? '1' : '0'), ((byte) & 0x10 ? '1' : '0'),                \
+      ((byte) & 0x08 ? '1' : '0'), ((byte) & 0x04 ? '1' : '0'),                \
+      ((byte) & 0x02 ? '1' : '0'), ((byte) & 0x01 ? '1' : '0')
+
 /* don't use CAMLparam1/CAMLreturn because bigarray is not heap-allocated
  * https://ocaml.org/manual/5.4/intfc.html#s%3AC-Bigarrays
  * */
@@ -35,7 +42,7 @@ CAMLexport void caml_free_big_bytes(value v) {
   struct caml_ba_array *b = Caml_ba_array_val(v);
   if ((enum caml_ba_managed)(b->flags & CAML_BA_MANAGED_MASK) ==
       CAML_BA_EXTERNAL) {
-    printf("Freeing %p, length=%ld\n", b, b->dim[0]);
+    // printf("Freeing %p, length=%ld\n", b, b->dim[0]);
     free(b->data);
   }
 }
@@ -87,6 +94,9 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
       sign_mask = 0b0;
     }
 
+    // printf("last_value=%ld, current_value=%ld, val=%ld, sign_mask=%d\n",
+    //        last_value, current_value, val, sign_mask);
+
     last_value = current_value;
     val = llabs(val);
 
@@ -97,8 +107,11 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
       continue_mask = 0b0U;
     }
 
-    *((uint8_t *)(out_ba->data + output_position++)) =
+    uint8_t octet_val =
         continue_mask | sign_mask | (uint8_t)(val & 0b00111111L);
+
+    *((uint8_t *)(out_ba->data + output_position++)) = octet_val;
+    // printf("Write: " BYTE_TO_BINARY_PATTERN "\n", BYTE_TO_BINARY(octet_val));
 
     val >>= 6;
     while (continue_mask > 0) {
@@ -108,11 +121,15 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
         continue_mask = 0b0;
       }
 
-      *((uint8_t *)(out_ba->data + output_position++)) =
-          continue_mask | (uint8_t)(val & 0b01111111L);
+      octet_val = continue_mask | (uint8_t)(val & 0b01111111L);
+      *((uint8_t *)(out_ba->data + output_position++)) = octet_val;
+      // printf("Write: " BYTE_TO_BINARY_PATTERN "\n",
+      // BYTE_TO_BINARY(octet_val));
 
       val >>= 7;
     }
+
+    // printf("\n\n");
   }
 
   return output_position;

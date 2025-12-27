@@ -105,16 +105,56 @@ module Columns = struct
         !last
     ;;
 
-    let encode_fragments bfs bi =
+    let rec encode_fragments bfs bi =
       let open Array1 in
       let a = get_buffer bfs bi in
       let max_enc_len = Const.max_uint_len * (dim a.buffer / 8) in
       let enc_a = create_stb max_enc_len max_enc_len in
       enc_a.position
       <- Stateful_buffers.External.encode_vle a.buffer enc_a.buffer a.position 0;
+      ignore encode_delta;
+      ignore encode_vle;
+      (* Seq.of_dispenser (encode_delta a) |> Seq.iter (encode_vle enc_a); *)
       blit (sub enc_a.buffer 0 enc_a.position) (sub a.buffer 0 enc_a.position);
       free_stb enc_a;
       a.position <- enc_a.position
+
+    and encode_delta a =
+      let last = ref 0L
+      and pos = ref 0 in
+      fun () ->
+        if !pos >= a.position
+        then Option.None
+        else (
+          let v = get_int64_be a.buffer !pos in
+          let r = Int64.sub v !last in
+          last := v;
+          pos := !pos + 8;
+          Option.Some r)
+
+    and encode_vle a v = encode_vle_head a (v < 0L) (Int64.abs v)
+
+    and encode_vle_head (a : stb) is_neg v =
+      let continue_mask = if v > 63L then 0b10000000 else 0b0 (*2^6 - 1*)
+      and sign_mask = if is_neg then 0b01000000 else 0b0
+      and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
+      let bts = Bytes.make 1 '\000' in
+      Bytes.set_uint8 bts 0 Int.(continue_mask |> logor sign_mask |> logor octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
+      a.position <- a.position + 1;
+      if continue_mask > 0
+      then encode_vle_tail a (Int64.shift_right_logical v 6) bts
+      else ()
+
+    and encode_vle_tail a v bts =
+      let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
+      and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
+      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
+      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
+      a.position <- a.position + 1;
+      if continue_mask > 0
+      then encode_vle_tail a (Int64.shift_right_logical v 7) bts
+      else ()
     ;;
 
     let serialize v bfs bi =
@@ -174,7 +214,6 @@ module Columns = struct
       blit compressed_strings (sub str_a.buffer 0 len);
       free_bytes compressed_strings;
       str_a.position <- len;
-      str_a.length <- len;
       IntColumn.encode_fragments bfs (bi + 1)
     ;;
 

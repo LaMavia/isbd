@@ -131,7 +131,7 @@ let print_buffers label (bfs : t) =
          b.length
          (Array1.dim b.buffer)
          b.position;
-       Utils.Debugging.print_hex_bytes "bytes" b.buffer)
+       Utils.Debugging.print_hex_bytes "bytes" (Array1.sub b.buffer 0 b.position))
     bfs
 ;;
 
