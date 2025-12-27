@@ -1,0 +1,14 @@
+{
+  "name": "person",
+  "columns": [
+    { "name": "Index", "type": "INT64" },
+    { "name": "User Id", "type": "VARCHAR" },
+    { "name": "First Name", "type": "VARCHAR" },
+    { "name": "Last Name", "type": "VARCHAR" },
+    { "name": "Sex", "type": "VARCHAR" },
+    { "name": "Email", "type": "VARCHAR" },
+    { "name": "Phone", "type": "VARCHAR" },
+    { "name": "Date of birth", "type": "VARCHAR" },
+    { "name": "Job Title", "type": "VARCHAR" }
+  ]
+}

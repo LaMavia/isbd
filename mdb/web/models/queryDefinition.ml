@@ -8,15 +8,12 @@ module Internal = struct
 end
 
 let t_of_yojson json =
-  WebUtils.Yj.alt Internal.[ select_query_of_yojson; copy_query_of_yojson ] json
+  WebUtils.Yj.alt
+    Internal.[ "select", select_query_of_yojson; "copy", copy_query_of_yojson ]
+    json
 ;;
 
 let yojson_of_t = function
   | QD_SelectQuery q -> SelectQuery.yojson_of_t q
   | QD_CopyQuery q -> CopyQuery.yojson_of_t q
-;;
-
-let table_name_of_t = function
-  | QD_CopyQuery q -> Some q.destination_table_name
-  | QD_SelectQuery q -> q.table_name
 ;;

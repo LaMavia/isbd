@@ -13,6 +13,6 @@ let to_string u = Uuidm.to_string u
 
 let of_string u =
   let invalid_message = Printf.sprintf "invalid uuid %s" u in
-  if String.length u != uuid_length then raise (Invalid_argument invalid_message);
+  if String.length u <> uuid_length then raise (Invalid_argument invalid_message);
   Uuidm.of_string u |> Utils.Unwrap.option ~message:invalid_message
 ;;

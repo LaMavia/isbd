@@ -3,12 +3,7 @@ open WebUtils.Yj
 
 type task = { request : Models.ExecuteQueryRequest.t }
 type status = Models.QueryStatus.t [@@deriving yojson]
-
-type err =
-  { message : string
-  ; details : string
-  }
-[@@deriving yojson]
+type err = Models.MultipleProblemsError.t [@@deriving yojson]
 
 exception QueryTaskError of err
 

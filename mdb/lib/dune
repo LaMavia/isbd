@@ -7,7 +7,10 @@
 
 (library
  (name lib)
- (libraries unix lz4))
+ (libraries unix lz4)
+ (foreign_stubs
+  (language c)
+  (names big_array)))
 
 ;
 ; (library

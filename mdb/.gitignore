@@ -18,3 +18,8 @@ results/*
 
 !tables/.*
 !results/.*
+
+*.zst
+
+data/*
+!data/.gitkeep
