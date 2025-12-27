@@ -83,6 +83,7 @@ CAMLexport void caml_set_int64_be_byte(value ba_v, value offset_v,
 intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
                     intptr_t input_length, intptr_t output_position) {
   int64_t last_value = 0L;
+  void *out_data = out_ba->data;
 
   for (intptr_t i = 0; i < input_length; i += sizeof(int64_t)) {
     int64_t current_value = get_int64_be(in_ba, i);
@@ -93,9 +94,6 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
     } else {
       sign_mask = 0b0;
     }
-
-    // printf("last_value=%ld, current_value=%ld, val=%ld, sign_mask=%d\n",
-    //        last_value, current_value, val, sign_mask);
 
     last_value = current_value;
     val = llabs(val);
@@ -110,8 +108,7 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
     uint8_t octet_val =
         continue_mask | sign_mask | (uint8_t)(val & 0b00111111L);
 
-    *((uint8_t *)(out_ba->data + output_position++)) = octet_val;
-    // printf("Write: " BYTE_TO_BINARY_PATTERN "\n", BYTE_TO_BINARY(octet_val));
+    *((uint8_t *)(out_data + output_position++)) = octet_val;
 
     val >>= 6;
     while (continue_mask > 0) {
@@ -122,14 +119,10 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
       }
 
       octet_val = continue_mask | (uint8_t)(val & 0b01111111L);
-      *((uint8_t *)(out_ba->data + output_position++)) = octet_val;
-      // printf("Write: " BYTE_TO_BINARY_PATTERN "\n",
-      // BYTE_TO_BINARY(octet_val));
+      *((uint8_t *)(out_data + output_position++)) = octet_val;
 
       val >>= 7;
     }
-
-    // printf("\n\n");
   }
 
   return output_position;

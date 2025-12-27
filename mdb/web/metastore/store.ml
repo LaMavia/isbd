@@ -40,20 +40,18 @@ module Internal = struct
 
   let with_read ~resolver td ms f =
     let open TableData in
-    let cursors =
-      List.map
-        (fun file_id -> Cursor.create (resolver td.id file_id ms) |> Result.get_ok)
-        td.files
-    in
-    let res =
-      cursors
-      |> List.map (fun cursor -> Deserializer.deserialize cursor |> snd)
-      |> List.to_seq
-      |> Seq.concat
-      |> f
-    in
-    List.iter Cursor.close cursors;
-    res
+    Seq.unfold
+      (function
+        | cursor_opt, [] ->
+          Option.iter Cursor.close cursor_opt;
+          None
+        | cursor_opt, file_id :: file_ids ->
+          Option.iter Cursor.close cursor_opt;
+          let cursor = Cursor.create (resolver td.id file_id ms) |> Result.get_ok in
+          Some (Deserializer.deserialize cursor |> snd, (Some cursor, file_ids)))
+      (None, td.files)
+    |> Seq.concat
+    |> f
   ;;
 end
 
@@ -215,7 +213,7 @@ let write path columns stream =
   let cursor = Cursor.create path |> Result.get_ok in
   Serializer.serialize ~encode:false Const.buffer_size columns stream cursor;
   Cursor.truncate cursor;
-  Unix.fsync cursor.map.fd;
+  (* Unix.fsync cursor.map.fd; *)
   cursor
 ;;
 

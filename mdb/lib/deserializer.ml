@@ -33,12 +33,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   ;;
 
   let deserialize ?(decode = true) (input_cursor : IC.t) =
-    Printf.eprintf "reading columns\n%!";
     let logcols, chunks_len = read_columns ~decode input_cursor in
-    Printf.eprintf
-      "[%s] columns=%s\n%!"
-      __FUNCTION__
-      (Array.to_list logcols |> List.map fst |> String.concat ", ");
     let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
     and phys_lens =
       logcols
@@ -61,7 +56,7 @@ module Make (IC : Cursor.CursorInterface) = struct
       get_int64_be (input_cursor |> seek 0 |> read 8) 0 |> Int64.to_int
     in
     let buffer_size = LZ4.compress_bound suggested_buffer_size in
-    let parsed_record_seq = ref Seq.empty
+    let parsed_record_seq_dispenser = ref (Fun.const None)
     and fraglen_bfs =
       Stateful_buffers.create ~n:1 ~len:max_fraglens_len ~actual_length:max_fraglens_len
     and bfs =
@@ -70,20 +65,19 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~len:suggested_buffer_size
         ~actual_length:buffer_size
     in
-    (* let should_gc = ref false in *)
+    Printf.eprintf
+      "[%s] allocating \n  %d×%d fragment bfs,\n  1×%d fraglen bfs\n%!"
+      __FUNCTION__
+      total_physcols
+      buffer_size
+      max_fraglens_len;
     let rec give_record () =
-      match Seq.uncons !parsed_record_seq with
+      match !parsed_record_seq_dispenser () with
       | Option.None when IC.position input_cursor >= chunks_len ->
         free fraglen_bfs;
         free bfs;
         Option.None
-      | Option.Some (h, t) ->
-        (* if !should_gc *)
-        (* then ( *)
-        (*   should_gc := false; *)
-        (*   Gc.full_major ()); *)
-        parsed_record_seq := t;
-        Option.Some h
+      | Option.Some _ as row_opt -> row_opt
       | Option.None ->
         let fraglen_a = Stateful_buffers.get_buffer fraglen_bfs 0 in
         let fraglens_len =
@@ -131,10 +125,9 @@ module Make (IC : Cursor.CursorInterface) = struct
           with
           | Invalid_argument _ -> None
         in
-        parsed_record_seq := Seq.of_dispenser aux;
+        parsed_record_seq_dispenser := aux;
         empty fraglen_bfs;
         empty bfs;
-        (* should_gc := true; *)
         give_record ()
     in
     logcols, Seq.of_dispenser give_record

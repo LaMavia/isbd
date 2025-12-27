@@ -23,12 +23,6 @@
       "operator": "EQUAL",
       "leftOperand": { "tableName": "person", "columnName": "Sex" },
       "rightOperand": "Female"
-    },
-    "orderByClause": [
-      {
-        "columnIndex": 1,
-        "ascending": true
-      }
-    ]
+    }
   }
 }
