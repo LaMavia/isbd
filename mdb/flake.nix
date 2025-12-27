@@ -213,11 +213,12 @@
 
             buildInputs = [
               llvm.libcxx
+              pkgs.glibc
             ];
 
 
             CPATH = builtins.concatStringsSep ":" [
-              (lib.makeSearchPathOutput "dev" "include" [ llvm.libcxx pkgs.openssl ])
+              (lib.makeSearchPathOutput "dev" "include" [ pkgs.glibc ])
               (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
             ];
 

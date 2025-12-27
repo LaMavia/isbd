@@ -2,13 +2,32 @@ open Bigarray
 
 type big_bytes = (char, int8_unsigned_elt, c_layout) Array1.t
 
-module Internal = struct
+module External = struct
   external create_big_bytes
     :  (int[@untagged])
     -> big_bytes
     = "caml_create_big_bytes_byte" "caml_create_big_bytes"
 
   external free_big_bytes : big_bytes -> unit = "caml_free_big_bytes"
+
+  external get_uint8
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_get_uint8_byte" "caml_get_uint8"
+
+  external get_int64_be
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int64[@unboxed])
+    = "caml_get_int64_be_byte" "caml_get_int64_be"
+
+  external set_int64_be
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int64[@unboxed])
+    -> unit
+    = "caml_set_int64_be_byte" "caml_set_int64_be"
 end
 
 type stb =
@@ -18,14 +37,6 @@ type stb =
   }
 
 type t = stb array
-
-module DLS_Keys = struct
-  open Domain
-
-  let get_uint8 = DLS.new_key (fun () -> lazy (Bytes.make 1 '\000'))
-  let get_int64be = DLS.new_key (fun () -> lazy (Bytes.make 8 '\000'))
-  let set_int64be = DLS.new_key (fun () -> lazy (Bytes.make 8 '\000'))
-end
 
 let read_bytes : big_bytes -> int -> int -> bytes =
   fun a i0 length ->
@@ -45,33 +56,11 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
   blit (sub b 0 len) (sub a i0 len)
 ;;
 
-let get_uint8 =
-  fun (a : big_bytes) (offset : int) ->
-  let buffer = Domain.DLS.get DLS_Keys.get_uint8 |> Lazy.force in
-  Array1.get a offset |> Bytes.set buffer 0;
-  Bytes.get_uint8 buffer 0
-;;
-
-let get_int64_be =
-  fun (a : big_bytes) (offset : int) ->
-  let buffer = Domain.DLS.get DLS_Keys.get_int64be |> Lazy.force in
-  for i = 0 to 7 do
-    Array1.get a (offset + i) |> Bytes.set buffer i
-  done;
-  Bytes.get_int64_be buffer 0
-;;
-
-let set_int64_be =
-  fun (a : big_bytes) (offset : int) (v : int64) ->
-  let buffer = Domain.DLS.get DLS_Keys.set_int64be |> Lazy.force in
-  Bytes.set_int64_be buffer 0 v;
-  for i = 0 to 7 do
-    Bytes.get buffer i |> Array1.set a (offset + i)
-  done
-;;
-
-let create_bytes len = Internal.create_big_bytes len
-let free_bytes ba = Internal.free_big_bytes ba
+let get_uint8 = External.get_uint8
+let get_int64_be = External.get_int64_be
+let set_int64_be = External.set_int64_be
+let create_bytes len = External.create_big_bytes len
+let free_bytes ba = External.free_big_bytes ba
 
 let create_stb len actual_len =
   { buffer = create_bytes actual_len; position = 0; length = len }
