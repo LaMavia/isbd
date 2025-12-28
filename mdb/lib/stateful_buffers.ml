@@ -36,6 +36,20 @@ module External = struct
     -> (int[@untagged])
     -> (int[@untagged])
     = "caml_encode_vle_byte" "caml_encode_vle"
+
+  external decode_vle
+    :  big_bytes
+    -> big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_decode_vle_byte" "caml_decode_vle"
+
+  external count_vle_elements
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_count_vle_elements_byte" "caml_count_vle_elements"
 end
 
 type stb =

@@ -65,44 +65,12 @@ module Columns = struct
         Option.some r)
     ;;
 
-    let rec decode_fragments bfs bi flens fi =
+    let decode_fragments bfs bi flens fi =
       let enc_len = flens.(fi) in
       let a = get_buffer bfs bi in
-      a.length <- enc_len;
-      let decoded_values =
-        Seq.of_dispenser (decode_vle a) |> Seq.map (decode_delta ()) |> List.of_seq
-      in
-      let a' = create_bytes (List.length decoded_values * 8) in
-      List.iteri (fun i n -> set_int64_be a' (i * 8) n) decoded_values;
+      let a' = create_bytes (External.count_vle_elements a.buffer enc_len * 8) in
+      External.decode_vle a.buffer a' enc_len 0 |> ignore;
       set_buffer bfs bi a'
-
-    and decode_vle a =
-      let pos = ref 0 in
-      fun () ->
-        if !pos >= a.length then Option.None else decode_vle_head a pos |> Option.some
-
-    and decode_vle_head a pos =
-      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
-      let continue = octet >= 0b10000000
-      and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
-      and rest = Int.logand octet 0b00111111 in
-      let u = rest |> Int64.of_int in
-      pos := !pos + 1;
-      if continue then decode_vle_tail sign u 6 a pos else Int64.mul sign u
-
-    and decode_vle_tail sign u shift a pos =
-      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
-      let continue = octet >= 0b10000000
-      and rest = Int.logand octet 0b01111111 in
-      let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      pos := !pos + 1;
-      if continue then decode_vle_tail sign u (shift + 7) a pos else Int64.mul sign u
-
-    and decode_delta () =
-      let last = ref 0L in
-      fun v ->
-        last := Int64.add v !last;
-        !last
     ;;
 
     let encode_fragments bfs bi =
