@@ -3,15 +3,7 @@
 #include <caml/mlvalues.h>
 #include <endian.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
-
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)                                                   \
-  ((byte) & 0x80 ? '1' : '0'), ((byte) & 0x40 ? '1' : '0'),                    \
-      ((byte) & 0x20 ? '1' : '0'), ((byte) & 0x10 ? '1' : '0'),                \
-      ((byte) & 0x08 ? '1' : '0'), ((byte) & 0x04 ? '1' : '0'),                \
-      ((byte) & 0x02 ? '1' : '0'), ((byte) & 0x01 ? '1' : '0')
 
 /* don't use CAMLparam1/CAMLreturn because bigarray is not heap-allocated
  * https://ocaml.org/manual/5.4/intfc.html#s%3AC-Bigarrays
@@ -83,6 +75,16 @@ CAMLexport void caml_set_int64_be_byte(value ba_v, value offset_v,
   return caml_set_int64_be(ba_v, Int_val(offset_v), Int64_val(val_v));
 }
 
+#define VLE_NEG_SIGN_MASK 0b01000000
+#define VLE_POS_SIGN_MASK 0b0
+#define VLE_HEAD_MAX_VAL 63L
+#define VLE_CONTINUE_MASK 0b10000000U
+#define VLE_HEAD_VAL_MASK 0b00111111L
+#define VLE_TAIL_MAX_VAL 127L
+#define VLE_TAIL_VAL_MASK 0b01111111L
+#define VLE_HEAD_VAL_LENGTH 6
+#define VLE_TAIL_VAL_LENGTH 7
+
 intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
                     intptr_t input_length, intptr_t output_position) {
   int64_t last_value = 0L;
@@ -93,38 +95,34 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
     int64_t val = current_value - last_value;
     uint8_t sign_mask;
     if (val < 0) {
-      sign_mask = 0b01000000;
+      sign_mask = VLE_NEG_SIGN_MASK;
     } else {
-      sign_mask = 0b0;
+      sign_mask = VLE_POS_SIGN_MASK;
     }
 
     last_value = current_value;
     val = llabs(val);
 
-    uint8_t continue_mask;
-    if (val > 63L) {
-      continue_mask = 0b10000000U;
-    } else {
-      continue_mask = 0b0U;
+    uint8_t continue_mask = 0;
+    if (val > VLE_HEAD_MAX_VAL) {
+      continue_mask = VLE_CONTINUE_MASK;
     }
 
     uint8_t octet_val =
-        continue_mask | sign_mask | (uint8_t)(val & 0b00111111L);
+        continue_mask | sign_mask | (uint8_t)(val & VLE_HEAD_VAL_MASK);
 
     *((uint8_t *)(out_data + output_position++)) = octet_val;
 
-    val >>= 6;
-    while (continue_mask > 0) {
-      if (val > 127L) {
-        continue_mask = 0b10000000;
-      } else {
-        continue_mask = 0b0;
+    val >>= VLE_HEAD_VAL_LENGTH;
+    while (continue_mask) {
+      if (val <= VLE_TAIL_MAX_VAL) {
+        continue_mask = 0;
       }
 
-      octet_val = continue_mask | (uint8_t)(val & 0b01111111L);
+      octet_val = continue_mask | (uint8_t)(val & VLE_TAIL_VAL_MASK);
       *((uint8_t *)(out_data + output_position++)) = octet_val;
 
-      val >>= 7;
+      val >>= VLE_TAIL_VAL_LENGTH;
     }
   }
 
@@ -150,7 +148,7 @@ intptr_t count_vle_elements(struct caml_ba_array *in_ba,
   int64_t count = 0L;
   uint8_t *in_data = (uint8_t *)(in_ba->data);
   for (intptr_t i = 0; i < input_length; i++) {
-    if ((*(in_data + i) & 0b10000000) == 0) {
+    if ((*(in_data + i) & VLE_CONTINUE_MASK) == 0) {
       count++;
     }
   }
@@ -174,19 +172,19 @@ intptr_t decode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
   void *in_data = in_ba->data;
 
   for (intptr_t i = 0; i < input_length;) {
-    int64_t shift = 6L;
+    int64_t shift = VLE_HEAD_VAL_LENGTH;
     int64_t acc = 0L;
     uint8_t octet = *(uint8_t *)(in_data + i++);
     int64_t sign = 1L;
-    if (octet & 0b01000000) {
+    if (octet & VLE_NEG_SIGN_MASK) {
       sign = -1L;
     }
 
-    acc = (int64_t)(octet & 0b00111111);
-    while (octet & 0b10000000) {
+    acc = (int64_t)(octet & VLE_HEAD_VAL_MASK);
+    while (octet & VLE_CONTINUE_MASK) {
       octet = *(uint8_t *)(in_data + i++);
-      acc |= (int64_t)(octet & 0b01111111) << shift;
-      shift += 7L;
+      acc |= (int64_t)(octet & VLE_TAIL_VAL_MASK) << shift;
+      shift += VLE_TAIL_VAL_LENGTH;
     }
 
     acc *= sign;

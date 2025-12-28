@@ -172,9 +172,6 @@ module Columns = struct
     and deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
 
     let decode_fragments bfs bi flens fi = VarcharColumn.decode_fragments bfs bi flens fi
-
-    (* Stateful_buffers.print_buffers "decoded column info" bfs *)
-
     let encode_fragments bfs bi = VarcharColumn.encode_fragments bfs bi
 
     let serialize (s, t) bfs bi =
