@@ -1,0 +1,17 @@
+{
+  "queryDefinition": {
+    "columnClauses": [
+      { "tableName": "num", "columnName": "id" },
+      {
+        "operator": "DIVIDE",
+        "leftOperand": {
+          "operator": "MULTIPLY",
+          "leftOperand": { "tableName": "num", "columnName": "a" },
+          "rightOperand": { "tableName": "num", "columnName": "b" }
+        },
+        "rightOperand": { "tableName": "num", "columnName": "c" }
+      },
+      { "tableName": "num", "columnName": "d" }
+    ]
+  }
+}
