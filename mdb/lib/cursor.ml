@@ -98,18 +98,9 @@ module MMapCursor = struct
     let set a offset length bts =
       if offset + length >= a.size
       then (
-        let extend_size =
-          page_size
-          * (int_of_float
-             @@ ceil
-             @@ (float_of_int (offset + length - a.size) /. page_size_f))
-        in
-        let len_written =
-          Unix.lseek a.fd 0 Unix.SEEK_END |> ignore;
-          let r = Unix.write a.fd (Bytes.make extend_size '\000') 0 extend_size in
-          r
-        in
-        a.size <- a.size + len_written;
+        let new_size = a.size + max length page_size in
+        Unix.ftruncate a.fd new_size;
+        a.size <- new_size;
         a.array <- map_file_descr a.fd);
       Array1.(blit bts (sub a.array offset length))
     ;;
@@ -160,6 +151,7 @@ module MMapCursor = struct
 
   let truncate c =
     Unix.ftruncate c.map.fd c.length;
+    Unix.fsync c.map.fd;
     c.map <- ManagedMMap.of_file_descr c.map.fd
   ;;
 
