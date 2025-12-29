@@ -452,7 +452,8 @@ let with_parallel_external_sort ~chunk_descriptors ~n_workers ~cols ~cmp f =
   in
   List.iter Domain.join workers;
   let result_temp_dist, result_cursor =
-    desc_array.(1) |> Utils.Unwrap.option ~message:"Sorting failed?"
+    desc_array.(1)
+    |> Utils.Unwrap.option ~message:"Sorting failed? This really shouldn't happen"
   in
   Fun.protect ~finally:(fun () ->
     Metastore.Store.Internal.Cursor.close result_cursor;
@@ -494,7 +495,7 @@ let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
   | Some order_by_clause ->
     let asc =
       Array.map
-        (fun OrderByExpression.{ ascending; _ } -> if ascending then 1 else 0)
+        (fun OrderByExpression.{ ascending; _ } -> if ascending then 1 else -1)
         order_by_clause
     in
     let cmp_length = Array.length order_by_clause in
@@ -507,12 +508,12 @@ let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
     in
     stream
     |> with_generic_external_sort
-         ~n_workers:4
+         ~n_workers:Config.merge_workers
          ~cols:Metastore.TableData.(td.columns)
          ~cmp
          ~est_size:Lib.Data.approx_record_size
          ~max_group_size:(Metastore.Const.buffer_size / Array.length td.columns)
-         ~k_way_threshold:60
+         ~k_way_threshold:Config.max_k_merge
          f
   | None -> f stream
 ;;
