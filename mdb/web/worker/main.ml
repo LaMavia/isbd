@@ -10,7 +10,7 @@ open! Utils.Ops
 let process_select ms tq task_id query_definition query =
   let open Utils.Let.Opt in
   let id = TaskQueue.uuid_of_id task_id in
-  let- td_opt, tlock_opt, query, column_types =
+  let- td_opt, tlock_opt, query, column_types, seen_columns =
     Mutex.protect
       Metastore.Store.(ms.store_lock)
       (fun () ->
@@ -18,12 +18,12 @@ let process_select ms tq task_id query_definition query =
          | _, Error problems ->
            TaskQueue.add_result task_id (Error problems) Failed tq;
            None
-         | td, Ok (query, column_types) ->
+         | td_opt, Ok (query, column_types, seen_columns) ->
            let query = Planner.Preprocess.preprocess_select_query query in
-           let tlock =
-             Option.map Metastore.TableData.(fun td -> Hashtbl.find ms.locks td.id) td
+           let tlock_opt =
+             Option.map Metastore.TableData.(fun td -> Hashtbl.find ms.locks td.id) td_opt
            in
-           Option.iter Mutex.lock tlock;
+           Option.iter Mutex.lock tlock_opt;
            TaskQueue.set_status task_id Running tq;
            List.iteri
              (fun i c ->
@@ -33,47 +33,60 @@ let process_select ms tq task_id query_definition query =
                   ([%yojson_of: Models.ColumnExpression.t] c |> Yojson.Safe.to_string)
                   (Models.ColumnExpression.string_of_expt_type (List.nth column_types i)))
              query.column_clauses;
-           Some (td, tlock, query, column_types))
+           Some (td_opt, tlock_opt, query, column_types, seen_columns))
   in
   try
     Fun.protect
       ~finally:(fun () -> Option.iter Mutex.unlock tlock_opt)
       (fun () ->
-         let _x =
-           let with_record_stream =
-             match td_opt with
-             | Some td -> Metastore.Store.with_read_table td ms
-             | None -> fun f -> f (List.to_seq [ [||] ])
-           in
-           with_record_stream (fun data ->
-             let open Planner.Eval in
-             let eval = make_eval_ce td_opt in
-             let result_td =
-               Metastore.TableData.
-                 { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
-                 ; id
-                 ; columns =
-                     column_types
-                     |> List.mapi (fun i t ->
-                       ( Printf.sprintf "c%d" i
-                       , Models.ColumnExpression.lib_of_expr_type_exc t ))
-                     |> Array.of_list
-                 ; files = []
-                 }
-             in
-             Seq.filter (filter eval query.where_clause) data
-             |> Seq.map (map eval query.column_clauses)
-             |> Seq.map Array.of_list
-             |> with_sort ~ms ~td:result_td ~order_by_clause_opt:query.order_by_clause
-                @@ limit ~limit_clause_opt:query.limit_clause
-                @> Metastore.Store.create_result result_td ms;
-             TaskQueue.add_result
-               task_id
-               (Ok { query_definition; result_id = Some id })
-               Completed
-               tq)
+         let with_record_stream =
+           match td_opt with
+           | Some td ->
+             Metastore.Store.with_read_table
+               ~column_filter:(Planner.Eval.column_filter_of_names td seen_columns)
+               td
+               ms
+           | None -> fun f -> f (List.to_seq [ [||] ])
          in
-         ())
+         let filtered_td_opt =
+           Option.map
+             Metastore.TableData.(
+               fun td ->
+                 { td with
+                   columns =
+                     Array.to_seq td.columns
+                     |> Seq.filter (fun (k, _) -> Hashtbl.mem seen_columns k)
+                     |> Array.of_seq
+                 })
+           @@ td_opt
+         in
+         with_record_stream (fun data ->
+           let open Planner.Eval in
+           let eval = make_eval_ce filtered_td_opt in
+           let result_td =
+             Metastore.TableData.
+               { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
+               ; id
+               ; columns =
+                   column_types
+                   |> List.mapi (fun i t ->
+                     ( Printf.sprintf "c%d" i
+                     , Models.ColumnExpression.lib_of_expr_type_exc t ))
+                   |> Array.of_list
+               ; files = []
+               }
+           in
+           Seq.filter (filter eval query.where_clause) data
+           |> Seq.map (map eval query.column_clauses)
+           |> Seq.map Array.of_list
+           |> with_sort ~ms ~td:result_td ~order_by_clause_opt:query.order_by_clause
+              @@ limit ~limit_clause_opt:query.limit_clause
+              @> Metastore.Store.create_result result_td ms;
+           TaskQueue.add_result
+             task_id
+             (Ok { query_definition; result_id = Some id })
+             Completed
+             tq))
   with
   | QueryTaskError problems -> TaskQueue.add_result task_id (Error problems) Failed tq
 ;;

@@ -61,7 +61,7 @@ module Exc = struct
 end
 
 (** requires a lock on [ms] *)
-let validate ms seen_table e =
+let validate ms seen_table seen_columns e =
   let open Utils.Let.Res in
   let rec validate_ce
     : ColumnExpression.t -> (ColumnExpression.expr_type, MultipleProblemsError.t) result
@@ -139,6 +139,7 @@ let validate ms seen_table e =
        | lt, rt ->
          Error Exc.[ invalid_arguments operator_name [ `Bool; `Bool ] [ lt; rt ] ])
   and validate_colref ColumnExpression.{ table_name; column_name } =
+    Hashtbl.replace seen_columns column_name ();
     match Metastore.Store.lookup_table_by_name table_name ms with
     | Some td ->
       (match Metastore.TableData.find_column_opt td column_name with
@@ -160,12 +161,15 @@ let validate ms seen_table e =
 
 (** requires a lock on [ms] *)
 let validate_select_query ms (q : SelectQuery.t) =
-  let seen_table = ref None in
-  let select_res = Utils.Monad.mmap_result (validate ms seen_table) q.column_clauses in
+  let seen_table = ref None
+  and seen_columns = Hashtbl.create ~random:true 0 in
+  let select_res =
+    Utils.Monad.mmap_result (validate ms seen_table seen_columns) q.column_clauses
+  in
   let where_res =
     Option.map
       (fun e ->
-         match validate ms seen_table e with
+         match validate ms seen_table seen_columns e with
          | Ok `Bool -> Ok `Bool
          | Ok t ->
            Error
@@ -184,7 +188,7 @@ let validate_select_query ms (q : SelectQuery.t) =
   in
   ( Option.bind !seen_table (fun tname -> Metastore.Store.lookup_table_by_name tname ms)
   , match select_res, where_res with
-    | Ok column_types, (Some (Ok `Bool) | None) -> Ok (q, column_types)
+    | Ok column_types, (Some (Ok `Bool) | None) -> Ok (q, column_types, seen_columns)
     | _ ->
       Error
         (List.append

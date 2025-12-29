@@ -38,7 +38,7 @@ module Internal = struct
 
   let remove_result id ms = Hashtbl.remove ms.id_results id
 
-  let with_read ~resolver td ms f =
+  let with_read ?column_filter ~resolver td ms f =
     let open TableData in
     Seq.unfold
       (function
@@ -48,7 +48,9 @@ module Internal = struct
         | cursor_opt, file_id :: file_ids ->
           Option.iter Cursor.close cursor_opt;
           let cursor = Cursor.create (resolver td.id file_id ms) |> Result.get_ok in
-          Some (Deserializer.deserialize cursor |> snd, (Some cursor, file_ids)))
+          Some
+            ( Deserializer.deserialize ?column_filter cursor |> snd
+            , (Some cursor, file_ids) ))
       (None, td.files)
     |> Seq.concat
     |> f
@@ -190,8 +192,14 @@ let drop_all_results ms =
   Hashtbl.reset ms.id_results
 ;;
 
-let with_read_table td ms f = with_read ~resolver:resolve_table_path td ms f
-let with_read_result td ms f = with_read ~resolver:resolve_result_path td ms f
+let with_read_table ?column_filter td ms f =
+  with_read ?column_filter ~resolver:resolve_table_path td ms f
+;;
+
+let with_read_result ?column_filter td ms f =
+  with_read ?column_filter ~resolver:resolve_result_path td ms f
+;;
+
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
 let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
 let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id

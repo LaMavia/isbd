@@ -32,26 +32,49 @@ module Make (IC : Cursor.CursorInterface) = struct
     columns, cols_offset
   ;;
 
-  let deserialize ?(decode = true) (input_cursor : IC.t) =
-    let logcols, chunks_len = read_columns ~decode input_cursor in
-    let max_fraglens_len = 2 * Const.max_uint_len * Array.length logcols
-    and phys_lens =
-      logcols
-      |> Array.map (function
-        | _, `ColVarchar -> Column.VarcharLogCol.physical_length
-        | _, `ColInt -> Column.IntLogCol.physical_length)
+  let physlen_of_logcol = function
+    | _, `ColVarchar -> Column.VarcharLogCol.physical_length
+    | _, `ColInt -> Column.IntLogCol.physical_length
+  ;;
+
+  let deserialize ?(decode = true) ?column_filter:column_filter_opt (input_cursor : IC.t) =
+    let raw_logcols, chunks_len = read_columns ~decode input_cursor in
+    let column_filter =
+      match column_filter_opt with
+      | Some cf -> cf
+      | None -> Array.init (Array.length raw_logcols) Fun.id
+    in
+    let filtered_logcols =
+      Array.mapi
+        (fun i logcol -> if Array.mem i column_filter then Some logcol else None)
+        raw_logcols
+    in
+    let resulting_logcols = Array.map (Array.unsafe_get raw_logcols) column_filter in
+    let max_fraglens_len = 2 * Const.max_uint_len * Array.length raw_logcols
+    and phys_lens = raw_logcols |> Array.map physlen_of_logcol
     and deserializers =
-      logcols
+      raw_logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.deserialize_iter
         | _, `ColVarchar -> Column.VarcharLogCol.deserialize_iter)
     and decoders =
-      logcols
+      raw_logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.decode_fragments
         | _, `ColVarchar -> Column.VarcharLogCol.decode_fragments)
     in
-    let total_physcols = Array.fold_right ( + ) phys_lens 0 in
+    let raw_physcol_idx_of_raw_logcol_idx =
+      Array.to_seq phys_lens |> Seq.scan ( + ) 0 |> Array.of_seq
+    in
+    let total_physcols =
+      Array.fold_left (fun u i -> u + Array.unsafe_get phys_lens i) 0 column_filter
+    in
+    let raw_logcol_of_raw_physcol =
+      Array.to_seqi raw_physcol_idx_of_raw_logcol_idx
+      |> Seq.take (Array.length raw_logcols)
+      |> Seq.concat_map (fun (li, _) -> Seq.init phys_lens.(li) (Fun.const li))
+      |> Array.of_seq
+    in
     let suggested_buffer_size =
       get_int64_be (input_cursor |> seek 0 |> read 8) 0 |> Int64.to_int
     in
@@ -59,6 +82,7 @@ module Make (IC : Cursor.CursorInterface) = struct
     let parsed_record_seq_dispenser = ref (Fun.const None)
     and fraglen_bfs =
       Stateful_buffers.create ~n:1 ~len:max_fraglens_len ~actual_length:max_fraglens_len
+    (* TODO: tu też zmodyfikować do selekcji kolumn *)
     and bfs =
       Stateful_buffers.create
         ~n:total_physcols
@@ -90,38 +114,61 @@ module Make (IC : Cursor.CursorInterface) = struct
         if decode
         then Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
         (* load each column into bfs *)
+        (* TODO: tu zmodyfikować do selekcji kolumn *)
+        (* INFO: length(flens) = length(column_filter) *)
         let flens =
+          let bi = ref 0
+          and i = ref 0 in
           Column.Columns.IntColumn.deserialize_seq fraglen_bfs 0
-          |> Array.of_seq
-          |> Array.mapi (fun i flen ->
+          |> Seq.filter_map (fun flen ->
             let flen = Int64.to_int flen in
-            let b = Stateful_buffers.get_buffer bfs i in
-            Array1.(blit (IC.read flen input_cursor) (sub b.buffer 0 flen));
-            b.length <- flen;
-            flen)
+            let li = raw_logcol_of_raw_physcol.(!i) in
+            if Array.mem li column_filter
+            then (
+              let b = Stateful_buffers.get_buffer bfs !bi in
+              Array1.(blit (IC.read flen input_cursor) (sub b.buffer 0 flen));
+              b.length <- flen;
+              bi := !bi + 1;
+              i := !i + 1;
+              Some flen)
+            else (
+              IC.move flen input_cursor |> ignore;
+              i := !i + 1;
+              None))
+          |> Array.of_seq
         in
         fraglen_a.length <- prev_fraglen_a_length;
         if decode
         then
           Array.fold_left
-            (fun (i, fi) _ ->
-               decoders.(i) bfs fi flens fi;
-               i + 1, fi + phys_lens.(i))
-            (0, 0)
-            logcols
+            (fun (i, ci, fi) logcol_opt ->
+               match logcol_opt with
+               | Some _ ->
+                 decoders.(i) bfs fi flens fi;
+                 i + 1, ci + 1, fi + phys_lens.(ci)
+               | None -> i + 1, ci, fi)
+            (0, 0, 0)
+            filtered_logcols
           |> ignore;
         Array.iter (fun b -> b.position <- 0) bfs;
-        let n_cols = Array.length logcols in
+        let n_cols = Array.length resulting_logcols in
         let _, column_dispensers =
           Array.fold_left_map
-            (fun (i, bi) _ ->
-               (i + 1, bi + phys_lens.(i)), deserializers.(i) bfs bi |> Seq.to_dispenser)
-            (0, 0)
-            logcols
+            (fun (i, ci, bi) logcol_opt ->
+               match logcol_opt with
+               | Some _ ->
+                 ( (i + 1, ci + 1, bi + phys_lens.(ci))
+                 , deserializers.(i) bfs bi |> Seq.to_dispenser )
+               | None -> (i + 1, ci, bi), Fun.const None)
+            (0, 0, 0)
+            filtered_logcols
         in
         let aux () =
           try
-            Some (Array.init n_cols (fun ci -> column_dispensers.(ci) () |> Option.get))
+            Some
+              (Array.init n_cols (fun ci ->
+                 let coli = column_filter.(ci) in
+                 column_dispensers.(coli) () |> Option.get))
           with
           | Invalid_argument _ -> None
         in
@@ -130,6 +177,6 @@ module Make (IC : Cursor.CursorInterface) = struct
         empty bfs;
         give_record ()
     in
-    logcols, Seq.of_dispenser give_record
+    resulting_logcols, Seq.of_dispenser give_record
   ;;
 end

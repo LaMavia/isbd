@@ -16,6 +16,18 @@ let make_column_lookup (td : Metastore.TableData.t) =
   |> Hashtbl.of_seq
 ;;
 
+let column_filter_of_names
+      (td : Metastore.TableData.t)
+      (seen_columns : (string, unit) Hashtbl.t)
+  =
+  let lookup = make_column_lookup td in
+  let column_idxs =
+    Hashtbl.to_seq_keys seen_columns |> Seq.map (Hashtbl.find lookup) |> Array.of_seq
+  in
+  Array.sort Int.compare column_idxs;
+  column_idxs
+;;
+
 let get_bool v =
   v
   |> Lib.Data.Types.get_bool
@@ -258,8 +270,6 @@ module ExternalSortInternal = struct
     |> List.to_seq
     |> Metastore.Store.write temp_dist cols
     |> ignore
-    (* returns the same cursor *);
-    Unix.fsync cursor.map.fd
   ;;
 
   let worker_main
@@ -500,7 +510,7 @@ let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
          ~cmp
          ~est_size:Lib.Data.approx_record_size
          ~max_group_size:(Metastore.Const.buffer_size / Array.length td.columns)
-         ~k_way_threshold:40
+         ~k_way_threshold:4
          f
   | None -> f stream
 ;;
