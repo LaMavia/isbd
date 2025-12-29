@@ -89,12 +89,12 @@ module Make (IC : Cursor.CursorInterface) = struct
         ~len:suggested_buffer_size
         ~actual_length:buffer_size
     in
-    Printf.eprintf
-      "[%s] allocating \n  %d×%d fragment bfs,\n  1×%d fraglen bfs\n%!"
-      __FUNCTION__
-      total_physcols
-      buffer_size
-      max_fraglens_len;
+    (* Printf.eprintf *)
+    (*   "[%s] allocating \n  %d×%d fragment bfs,\n  1×%d fraglen bfs\n%!" *)
+    (*   __FUNCTION__ *)
+    (*   total_physcols *)
+    (*   buffer_size *)
+    (*   max_fraglens_len; *)
     let rec give_record () =
       match !parsed_record_seq_dispenser () with
       | Option.None when IC.position input_cursor >= chunks_len ->

@@ -159,6 +159,73 @@ let validate ms seen_table seen_columns e =
   validate_ce e
 ;;
 
+let validate_where_clause ms seen_table seen_columns e =
+  match validate ms seen_table seen_columns e with
+  | Ok `Bool -> Ok `Bool
+  | Ok t ->
+    Error
+      MultipleProblemsError.
+        [ { error = "Invalid where clause type"
+          ; context =
+              Some
+                (Printf.sprintf
+                   "Expected the clause to be of type %s but got %s instead"
+                   (ColumnExpression.string_of_expt_type `Bool)
+                   (ColumnExpression.string_of_expt_type t))
+          }
+        ]
+  | Error _ as err -> err
+;;
+
+let validate_order_by_clause SelectQuery.{ column_clauses; order_by_clause; _ } =
+  let open OrderByExpression in
+  let n_cols = List.length column_clauses in
+  match order_by_clause with
+  | None -> Ok ()
+  | Some obc ->
+    (match
+       Array.find_mapi
+         (fun i { column_index; _ } ->
+            if column_index < 0 || column_index >= n_cols
+            then Some (i, column_index)
+            else None)
+         obc
+     with
+     | None -> Ok ()
+     | Some (i, coli) ->
+       Error
+         MultipleProblemsError.
+           [ { error = "Invalid order by clause"
+             ; context =
+                 Some
+                   (Printf.sprintf
+                      "Invalid column index in order by clause %d. Expected column index \
+                       0 ≤ %d < %d"
+                      i
+                      coli
+                      n_cols)
+             }
+           ])
+;;
+
+let validate_limit_clause ({ limit } : LimitExpression.t) =
+  if limit >= 0
+  then Ok ()
+  else
+    Error
+      MultipleProblemsError.
+        [ { error = "Invalid limit clause"
+          ; context =
+              Some
+                (Printf.sprintf
+                   "Expected limit to be non-negative, but got %d instead"
+                   limit)
+          }
+        ]
+;;
+
+let error_list_of_res res = Result.fold ~ok:(Fun.const []) ~error:Fun.id res
+
 (** requires a lock on [ms] *)
 let validate_select_query ms (q : SelectQuery.t) =
   let seen_table = ref None
@@ -167,34 +234,20 @@ let validate_select_query ms (q : SelectQuery.t) =
     Utils.Monad.mmap_result (validate ms seen_table seen_columns) q.column_clauses
   in
   let where_res =
-    Option.map
-      (fun e ->
-         match validate ms seen_table seen_columns e with
-         | Ok `Bool -> Ok `Bool
-         | Ok t ->
-           Error
-             MultipleProblemsError.
-               [ { error = "Invalid where clause type"
-                 ; context =
-                     Some
-                       (Printf.sprintf
-                          "Expected the clause to be of type %s but got %s instead"
-                          (ColumnExpression.string_of_expt_type `Bool)
-                          (ColumnExpression.string_of_expt_type t))
-                 }
-               ]
-         | Error _ as err -> err)
-      q.where_clause
+    Option.map (validate_where_clause ms seen_table seen_columns) q.where_clause
   in
+  let order_res = validate_order_by_clause q in
+  let limit_res = Option.map validate_limit_clause q.limit_clause in
   ( Option.bind !seen_table (fun tname -> Metastore.Store.lookup_table_by_name tname ms)
-  , match select_res, where_res with
-    | Ok column_types, (Some (Ok `Bool) | None) -> Ok (q, column_types, seen_columns)
+  , match select_res, where_res, order_res with
+    | Ok column_types, (Some (Ok `Bool) | None), Ok () ->
+      Ok (q, column_types, seen_columns)
     | _ ->
       Error
-        (List.append
-           (Result.fold ~ok:(Fun.const []) ~error:Fun.id select_res)
-           (Option.fold
-              ~none:[]
-              ~some:(Result.fold ~ok:(Fun.const []) ~error:Fun.id)
-              where_res)) )
+        (List.concat
+           [ error_list_of_res select_res
+           ; Option.fold ~none:[] ~some:error_list_of_res where_res
+           ; error_list_of_res order_res
+           ; Option.fold ~none:[] ~some:error_list_of_res limit_res
+           ]) )
 ;;

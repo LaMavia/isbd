@@ -69,14 +69,14 @@ module Make (OC : Cursor.CursorInterface) = struct
     and chunk_bfs =
       create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
     in
-    Printf.eprintf
-      "[%s] allocating \n  %d×%d record bfs,\n  %d×%d chunk buffers\n"
-      __FUNCTION__
-      total_physcols
-      buffer_size
-      total_physcols
-      buffer_size;
-    flush stderr;
+    (* Printf.eprintf *)
+    (*   "[%s] allocating \n  %d×%d record bfs,\n  %d×%d chunk buffers\n" *)
+    (*   __FUNCTION__ *)
+    (*   total_physcols *)
+    (*   buffer_size *)
+    (*   total_physcols *)
+    (*   buffer_size; *)
+    (* flush stderr; *)
     let buffer_size_bytes = create_bytes 8 in
     set_int64_be buffer_size_bytes 0 (Int64.of_int buffer_size_suggestion);
     OC.write (Array1.dim buffer_size_bytes) buffer_size_bytes output_cursor |> ignore;
@@ -144,15 +144,3 @@ module Make (OC : Cursor.CursorInterface) = struct
     free chunk_bfs
   ;;
 end
-
-(*
-   00 00 00 00 00 00 00 64 
-00 00 00 00 00 00 00 0a 
-0a 00 
-  00 02 02 02 02 02 02 02 02 02 
-
-01 02 
-  02 
-  02 02 
-  02 02 02 02 02 69 6e 74 31 01 69 6e 74 32 01 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 26 00 00 00 00 00 00 00 30
-*)
