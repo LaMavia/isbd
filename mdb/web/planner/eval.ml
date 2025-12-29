@@ -250,18 +250,6 @@ let group_eph_seq weight max_weight seq0 =
 
 let make_temp_chunk_file () = Filename.temp_file "chunk" ".bin"
 
-let group_chunks ~cols ~est_size ~max_group_size stream =
-  group_eph_seq est_size max_group_size stream
-  |> Seq.mapi (fun _i group_stream ->
-    Printf.eprintf "[%s] writing group %d\n" __FUNCTION__ _i;
-    flush stderr;
-    let temp_dist = make_temp_chunk_file () in
-    let cursor = Metastore.Store.write temp_dist cols group_stream in
-    Metastore.Store.Internal.Cursor.close cursor;
-    temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
-  |> Array.of_seq
-;;
-
 module ExternalSortInternal = struct
   let sort_file_in_place ~temp_dist ~cursor ~cols ~cmp =
     cursor
@@ -271,34 +259,6 @@ module ExternalSortInternal = struct
     |> List.to_seq
     |> Metastore.Store.write temp_dist cols
     |> ignore
-  ;;
-
-  let parallel_sort_streams ~n_workers ~cols ~cmp ~streams =
-    let task_queue_lock = Mutex.create ()
-    and task_queue = Seq.init (Array.length streams) Fun.id |> Queue.of_seq in
-    let worker_main ~worker_idx () =
-      let rec aux () =
-        match Mutex.protect task_queue_lock (fun () -> Queue.take_opt task_queue) with
-        | None ->
-          Printf.eprintf "[sort-worker %d] no longer needed, stopping\n%!" worker_idx;
-          ()
-        | Some (i : int) ->
-          Printf.eprintf "[sort-worker %d] sorting group %d\n%!" worker_idx i;
-          let temp_dist, cursor = streams.(i) in
-          sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
-          aux ()
-      in
-      try aux () with
-      | exc ->
-        Printf.eprintf
-          "[merge-worker %d] Exception: %s;\n  %s\n%!"
-          worker_idx
-          (Printexc.to_string exc)
-          (Printexc.get_backtrace ());
-        raise exc
-    in
-    List.init n_workers (fun worker_idx -> Domain.spawn (worker_main ~worker_idx))
-    |> List.iter Domain.join
   ;;
 
   let worker_main
@@ -318,18 +278,9 @@ module ExternalSortInternal = struct
         Printf.eprintf "[merge-worker %d] no longer needed, stopping\n" worker_idx;
         ()
       | Some (`Sort (i : int)) ->
-        let temp_dist, cursor =
-          desc_array.(i)
-          |> Utils.Unwrap.option
-               ~message:(Printf.sprintf "Invalid assumption: no cursor %d to sort" i)
-        in
-        Printf.eprintf
-          "[merge-worker %d] sorting group %d, cursor %d, file %s\n%!"
-          worker_idx
-          (i - (Array.length pending_deps_array / 2))
-          (2 * Obj.magic cursor)
-          temp_dist;
-        sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
+        (* INFO: legacy task type from before parallel sorting was moved to [group_chunks].
+           The initial queue tasks chould be changed, yet it's so inconsequential, I won't bother.
+           *)
         if Atomic.fetch_and_add pending_deps_array.(i / 2) (-1) = 1
         then
           Mutex.protect task_queue_lock (fun () -> Queue.add (`Merge (i / 2)) task_queue);
@@ -395,30 +346,56 @@ module ExternalSortInternal = struct
   ;;
 end
 
-(** [with_external_sort ~cols ~cmp ~est_size ~max_group_size f stream]
+let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
+  let should_die = ref false
+  and empty_queue_cond = Condition.create ()
+  and task_queue_lock = Mutex.create ()
+  and task_queue = Queue.create () in
+  let rec worker_aux ~worker_idx () =
+    let task_opt =
+      Mutex.protect task_queue_lock (fun () ->
+        let task = ref None in
+        while not (!should_die || Option.is_some !task) do
+          match Queue.take_opt task_queue with
+          | None -> Condition.wait empty_queue_cond task_queue_lock
+          | Some t -> task := Some t
+        done;
+        !task)
+    in
+    match task_opt with
+    | None -> Printf.eprintf "[sort-worker %d] done\n%!" worker_idx
+    | Some (temp_dist, cursor) ->
+      Printf.eprintf "[sort-worker %d] sorting file %s\n%!" worker_idx temp_dist;
+      ExternalSortInternal.sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
+      Metastore.Store.Internal.Cursor.seek 0 cursor |> ignore;
+      worker_aux ~worker_idx ()
+  in
+  let workers =
+    List.init n_workers (fun worker_idx -> Domain.spawn @@ worker_aux ~worker_idx)
+  in
+  let result_array =
+    group_eph_seq est_size max_group_size stream
+    |> Seq.mapi (fun i group_stream ->
+      Printf.eprintf "[%s] writing group %d\n%!" __FUNCTION__ i;
+      let temp_dist = make_temp_chunk_file () in
+      let cursor = Metastore.Store.write temp_dist cols group_stream in
+      Metastore.Store.Internal.Cursor.close cursor;
+      temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
+    |> Seq.map (fun task ->
+      Mutex.protect task_queue_lock (fun () ->
+        Queue.add task task_queue;
+        Condition.broadcast empty_queue_cond);
+      task)
+    |> Array.of_seq
+  in
+  should_die := true;
+  Condition.broadcast empty_queue_cond;
+  List.iter Domain.join workers;
+  result_array
+;;
 
-    1. splits [stream] of records with columns [cols] into groups of approximately [max_group_size] (estimated on per-record basis using [est_size]). The size can be exceeded by the estimated size of 1 record;
-
-    2. sorts them in memory using [in_memory_sort cmp];
-
-    3. writes them into temporary files on the disk;
-
-    4. merges them using [k_way_merge cmp];
-
-    5. evaluates [f] on the merged stream;
-
-    6. closes the merged stream, and deletes the temporary files.
-
-
-    [f] should consume the entire stream by the time it's done, because the resulting merged stream is ephemeral.
-    *)
-let with_external_sort ~n_workers ~chunk_descriptors ~cols ~cmp f =
+let with_external_sort ~chunk_descriptors ~cmp f =
   let open Utils.Ops in
-  ExternalSortInternal.parallel_sort_streams
-    ~n_workers
-    ~cols
-    ~cmp
-    ~streams:chunk_descriptors;
   let chunk_streams = Array.map (snd @> Metastore.Store.read_cursor) chunk_descriptors in
   let cleanup () =
     Array.iter
@@ -493,13 +470,15 @@ let with_generic_external_sort
       f
       stream
   =
-  let chunk_descriptors = group_chunks ~cols ~est_size ~max_group_size stream in
+  let chunk_descriptors =
+    group_chunks ~cols ~est_size ~max_group_size ~n_workers:2 ~cmp stream
+  in
   let n_groups = Array.length chunk_descriptors in
   if n_groups <= k_way_threshold
   then (
     Printf.eprintf "[%s] %d ≤ %d: k-way sort\n" __FUNCTION__ n_groups k_way_threshold;
     flush stderr;
-    with_external_sort ~chunk_descriptors ~n_workers ~cols ~cmp f)
+    with_external_sort ~chunk_descriptors ~cmp f)
   else (
     Printf.eprintf
       "[%s] %d > %d: paraller log sort\n"
