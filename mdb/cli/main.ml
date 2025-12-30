@@ -19,7 +19,6 @@ let () =
     ; "-d", make_set_mode Deserialize, "deserialize"
     ]
   in
-  Memtrace.trace_if_requested ();
   Arg.parse speclist anon_fun usage_msg;
   let path = List.hd !input_files in
   let cursor = C.create path |> Result.get_ok in

@@ -15,9 +15,11 @@ node_modules
 
 tables/*
 results/*
+mdb_data/*
 
 !tables/.*
 !results/.*
+!mdb_data/.*
 
 *.zst
 

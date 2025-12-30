@@ -354,10 +354,14 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
   let rec worker_aux ~worker_idx () =
     let task_opt =
       Mutex.protect task_queue_lock (fun () ->
-        let task = ref None in
-        while not (!should_die || Option.is_some !task) do
+        let task = ref None
+        and will_stop = ref false in
+        while not (!will_stop || Option.is_some !task) do
           match Queue.take_opt task_queue with
-          | None -> Condition.wait empty_queue_cond task_queue_lock
+          | None ->
+            if !should_die
+            then will_stop := true
+            else Condition.wait empty_queue_cond task_queue_lock
           | Some t -> task := Some t
         done;
         !task)
@@ -379,8 +383,7 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
       Printf.eprintf "[%s] writing group %d\n%!" __FUNCTION__ i;
       let temp_dist = make_temp_chunk_file () in
       let cursor = Metastore.Store.write temp_dist cols group_stream in
-      Metastore.Store.Internal.Cursor.close cursor;
-      temp_dist, Metastore.Store.Internal.Cursor.create temp_dist |> Result.get_ok)
+      temp_dist, cursor)
     |> Seq.map (fun task ->
       Mutex.protect task_queue_lock (fun () ->
         Queue.add task task_queue;
