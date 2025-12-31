@@ -1,5 +1,6 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 open Core
+open Utils.Fpath
 
 type raw = { tables : TableData.t list } [@@deriving yojson]
 
@@ -115,13 +116,8 @@ let save (ms : t) =
   Unix.single_write_substring ms_fd ms_json 0 (String.length ms_json) |> ignore
 ;;
 
-let resolve_table_directory tid ms =
-  Printf.sprintf "%s/%s" ms.config.table_directory (Uuid.to_string tid)
-;;
-
-let resolve_result_directory rid ms =
-  Printf.sprintf "%s/%s" ms.config.result_directory (Uuid.to_string rid)
-;;
+let resolve_table_directory tid ms = ms.config.table_directory // Uuid.to_string tid
+let resolve_result_directory rid ms = ms.config.result_directory // Uuid.to_string rid
 
 let resolve_table_path tid sid ms =
   Printf.sprintf "%s/%s.bin" (resolve_table_directory tid ms) (Uuid.to_string sid)
@@ -131,9 +127,7 @@ let resolve_result_path rid sid ms =
   Printf.sprintf "%s/%s.bin" (resolve_result_directory rid ms) (Uuid.to_string sid)
 ;;
 
-let resolve_data_path relative_path ms =
-  Printf.sprintf "%s/%s" ms.config.data_directory relative_path
-;;
+let resolve_data_path relative_path ms = ms.config.data_directory // relative_path
 
 let create_table _id td ms =
   Mutex.protect ms.store_lock
