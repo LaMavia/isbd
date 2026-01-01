@@ -1,5 +1,9 @@
 module Make (OC : Cursor.CursorInterface) = struct
-  let write_columns (logcols : (string * Column.col) array) (output_cursor : OC.t) =
+  let write_columns
+        ?(encode = true)
+        (logcols : (string * Column.col) array)
+        (output_cursor : OC.t)
+    =
     let open OC in
     let open Stateful_buffers in
     let cols_offset = output_cursor |> position |> Int64.of_int in
@@ -13,11 +17,11 @@ module Make (OC : Cursor.CursorInterface) = struct
     let cols_bytes = create_bytes max_total_cols_len
     and cols_lengths_bytes = create_bytes max_total_cols_lengths_len
     and offsets_bytes = create_bytes 16 in
-    let bfs = of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ] in
+    let@ bfs = of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ] in
     (* Serialize each column *)
     logcols
     |> Array.iter (fun logcol -> Column.Columns.ColumnInfoColumn.serialize logcol bfs 0);
-    Column.Columns.ColumnInfoColumn.encode_fragments bfs 0;
+    if encode then Column.Columns.ColumnInfoColumn.encode_fragments bfs 0;
     (* print_buffers "Encoded columns" bfs; *)
     let cols_bf = get_buffer bfs 0 in
     let cols_lengths_bf = get_buffer bfs 1 in
@@ -33,13 +37,14 @@ module Make (OC : Cursor.CursorInterface) = struct
   ;;
 
   let serialize
+        ?(encode = true)
         (buffer_size_suggestion : int)
         (logcols : (string * Column.col) array)
         (record_stream : Data.data_record Seq.t)
         (output_cursor : OC.t)
     =
-    let open Stateful_buffers in
-    let open Bigarray in
+    let open! Stateful_buffers in
+    let open! Bigarray in
     let buffer_size = LZ4.compress_bound buffer_size_suggestion in
     let phys_lens =
       logcols
@@ -58,11 +63,20 @@ module Make (OC : Cursor.CursorInterface) = struct
         | _, `ColVarchar -> Column.VarcharLogCol.encode_fragments)
     in
     let total_physcols = Array.fold_right ( + ) phys_lens 0 in
-    let record_bfs =
-      create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
-    and chunk_bfs =
+    let@ record_bfs =
       create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
     in
+    let@ chunk_bfs =
+      create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
+    in
+    (* Printf.eprintf *)
+    (*   "[%s] allocating \n  %d×%d record bfs,\n  %d×%d chunk buffers\n" *)
+    (*   __FUNCTION__ *)
+    (*   total_physcols *)
+    (*   buffer_size *)
+    (*   total_physcols *)
+    (*   buffer_size; *)
+    (* flush stderr; *)
     let buffer_size_bytes = create_bytes 8 in
     set_int64_be buffer_size_bytes 0 (Int64.of_int buffer_size_suggestion);
     OC.write (Array1.dim buffer_size_bytes) buffer_size_bytes output_cursor |> ignore;
@@ -86,7 +100,7 @@ module Make (OC : Cursor.CursorInterface) = struct
            Column.Columns.IntColumn.serialize (Int64.of_int b.position) lengths_bfs 0)
         chunk_bfs
       |> ignore;
-      Column.Columns.IntColumn.encode_fragments lengths_bfs 0;
+      if encode then Column.Columns.IntColumn.encode_fragments lengths_bfs 0;
       let lengths_a = get_buffer lengths_bfs 0 in
       let fragments_offset_offset = OC.position output_cursor in
       output_cursor |> OC.move 8 |> OC.write lengths_a.position lengths_a.buffer |> ignore;
@@ -104,11 +118,13 @@ module Make (OC : Cursor.CursorInterface) = struct
       empty chunk_bfs;
       empty lengths_bfs
     and encode_fragments () =
-      let encode_column ((i, fi) : int * int) encoder =
-        encoder chunk_bfs fi;
-        i + 1, fi + phys_lens.(i)
-      in
-      Array.fold_left encode_column (0, 0) encoders |> ignore
+      if encode
+      then (
+        let encode_column ((i, fi) : int * int) encoder =
+          encoder chunk_bfs fi;
+          i + 1, fi + phys_lens.(i)
+        in
+        Array.fold_left encode_column (0, 0) encoders |> ignore)
     in
     let process_record (r : Data.data_record) =
       let process_column ((i, bi) : int * int) (v : Data.Types.t) =
@@ -123,18 +139,6 @@ module Make (OC : Cursor.CursorInterface) = struct
     then (
       encode_fragments ();
       dump_buffers ());
-    write_columns logcols output_cursor
+    write_columns ~encode logcols output_cursor
   ;;
 end
-
-(*
-   00 00 00 00 00 00 00 64 
-00 00 00 00 00 00 00 0a 
-0a 00 
-  00 02 02 02 02 02 02 02 02 02 
-
-01 02 
-  02 
-  02 02 
-  02 02 02 02 02 69 6e 74 31 01 69 6e 74 32 01 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 05 00 00 00 00 00 00 00 26 00 00 00 00 00 00 00 30
-*)

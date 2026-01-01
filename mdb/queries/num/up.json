@@ -1,0 +1,10 @@
+{
+  "name": "num",
+  "columns": [
+    { "name": "id", "type": "INT64" },
+    { "name": "a", "type": "INT64" },
+    { "name": "b", "type": "INT64" },
+    { "name": "c", "type": "INT64" },
+    { "name": "d", "type": "INT64" }
+  ]
+}

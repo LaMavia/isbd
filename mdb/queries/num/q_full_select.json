@@ -1,0 +1,11 @@
+{
+  "queryDefinition": {
+    "columnClauses": [
+      { "tableName": "num", "columnName": "id" },
+      { "tableName": "num", "columnName": "a" },
+      { "tableName": "num", "columnName": "b" },
+      { "tableName": "num", "columnName": "c" },
+      { "tableName": "num", "columnName": "d" }
+    ]
+  }
+}

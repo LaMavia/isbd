@@ -6,7 +6,6 @@
 (executable
  (name main)
  (public_name mdb)
- (package mdb)
  (libraries lib yojson ppx_yojson_conv web)
  (preprocess
   (pps ppx_yojson_conv)))

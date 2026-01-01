@@ -2,6 +2,56 @@ open Bigarray
 
 type big_bytes = (char, int8_unsigned_elt, c_layout) Array1.t
 
+module External = struct
+  external create_big_bytes
+    :  (int[@untagged])
+    -> big_bytes
+    = "caml_create_big_bytes_byte" "caml_create_big_bytes"
+
+  external free_big_bytes : big_bytes -> unit = "caml_free_big_bytes"
+
+  external get_uint8
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_get_uint8_byte" "caml_get_uint8"
+
+  external get_int64_be
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int64[@unboxed])
+    = "caml_get_int64_be_byte" "caml_get_int64_be"
+
+  external set_int64_be
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int64[@unboxed])
+    -> unit
+    = "caml_set_int64_be_byte" "caml_set_int64_be"
+
+  external encode_vle
+    :  big_bytes
+    -> big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_encode_vle_byte" "caml_encode_vle"
+
+  external decode_vle
+    :  big_bytes
+    -> big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_decode_vle_byte" "caml_decode_vle"
+
+  external count_vle_elements
+    :  big_bytes
+    -> (int[@untagged])
+    -> (int[@untagged])
+    = "caml_count_vle_elements_byte" "caml_count_vle_elements"
+end
+
 type stb =
   { mutable buffer : big_bytes
   ; mutable position : int
@@ -28,44 +78,26 @@ let write_big_bytes : big_bytes -> int -> int -> big_bytes -> unit =
   blit (sub b 0 len) (sub a i0 len)
 ;;
 
-let get_uint8 =
-  let buffer = Bytes.make 1 '\000' in
-  fun (a : big_bytes) (offset : int) ->
-    Array1.get a offset |> Bytes.set buffer 0;
-    Bytes.get_uint8 buffer 0
-;;
-
-let get_int64_be =
-  let buffer = Bytes.make 8 '\000' in
-  fun (a : big_bytes) (offset : int) ->
-    for i = 0 to 7 do
-      Array1.get a (offset + i) |> Bytes.set buffer i
-    done;
-    Bytes.get_int64_be buffer 0
-;;
-
-let set_int64_be =
-  let buffer = Bytes.make 8 '\000' in
-  fun (a : big_bytes) (offset : int) (v : int64) ->
-    Bytes.set_int64_be buffer 0 v;
-    for i = 0 to 7 do
-      Bytes.get buffer i |> Array1.set a (offset + i)
-    done
-;;
-
-let get_buffer (bfs : t) (i : int) = bfs.(i)
-
-let set_buffer (bfs : t) (i : int) a =
-  bfs.(i) <- { buffer = a; position = 0; length = Array1.dim a }
-;;
-
-let create_bytes len = Array1.create Char c_layout len
+let get_uint8 = External.get_uint8
+let get_int64_be = External.get_int64_be
+let set_int64_be = External.set_int64_be
+let create_bytes len = External.create_big_bytes len
+let free_bytes ba = External.free_big_bytes ba
 
 let create_stb len actual_len =
   { buffer = create_bytes actual_len; position = 0; length = len }
 ;;
 
+let free_stb { buffer; _ } = free_bytes buffer
 let create ~n ~len ~actual_length = Array.init n (fun _ -> create_stb len actual_length)
+let free (bfs : t) = Array.iter (fun { buffer; _ } -> free_bytes buffer) bfs
+let get_buffer (bfs : t) (i : int) = bfs.(i)
+
+(** Frees the old buffer, and sets its slot to the new one *)
+let set_buffer (bfs : t) (i : int) a =
+  free_stb bfs.(i);
+  bfs.(i) <- { buffer = a; position = 0; length = Array1.dim a }
+;;
 
 let big_bytes_of_string s =
   let bts = String.to_bytes s in
@@ -103,11 +135,6 @@ let copy_bytes a =
 
 let blit src_bfs dist_bfs = Array.iter2 blit_big_bytes src_bfs dist_bfs
 
-let free bfs =
-  Array.iter Buffer.clear bfs;
-  Gc.major ()
-;;
-
 let print_buffers label (bfs : t) =
   Printf.eprintf "%s:\n" label;
   Array.iteri
@@ -118,6 +145,28 @@ let print_buffers label (bfs : t) =
          b.length
          (Array1.dim b.buffer)
          b.position;
-       Utils.Debugging.print_hex_bytes "bytes" b.buffer)
+       LibUtils.Debugging.print_hex_bytes "bytes" (Array1.sub b.buffer 0 b.position))
     bfs
 ;;
+
+module LZ4_Storage : LZ4.S with type storage := big_bytes = struct
+  let compress_into input output = LZ4.Bigbytes.compress_into input output
+
+  let compress input =
+    let length = LZ4.compress_bound (Array1.dim input) in
+    let output = create_bytes length in
+    let length' = compress_into input output in
+    if length' <> length then Array1.sub output 0 length' else output
+  ;;
+
+  let decompress_into input output = LZ4.Bigbytes.decompress_into input output
+
+  let decompress ~length input =
+    if length < 0 then invalid_arg "LZ4.decompress: negative length";
+    let output = create_bytes length in
+    let length' = decompress_into input output in
+    if length' <> length then Array1.sub output 0 length' else output
+  ;;
+end
+
+let ( let@ ) o f = Fun.protect ~finally:(fun () -> free o) @@ fun () -> f o

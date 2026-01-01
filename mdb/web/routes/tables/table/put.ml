@@ -31,7 +31,7 @@ let table_name_error schema ms =
 
 let respond_with_error message =
   let open Models.MultipleProblemsError in
-  [ { error = "Error validating schema"; context = Some message } ]
+  { problems = [ { error = "Error validating schema"; context = Some message } ] }
   |> [%yojson_of: t]
   |> Yojson.Safe.to_string
   |> Dream.json ~status:`Bad_Request

@@ -1,5 +1,6 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 open Core
+open Utils.Fpath
 
 type raw = { tables : TableData.t list } [@@deriving yojson]
 
@@ -38,32 +39,22 @@ module Internal = struct
 
   let remove_result id ms = Hashtbl.remove ms.id_results id
 
-  (* let write output_dir (td : TableData.t) ms (stream : Lib.Data.data_record Seq.t) = *)
-  (*   let open Utils.Let.Opt in *)
-  (*   let- output_lock = Hashtbl.find_opt ms.locks td.id in *)
-  (*   Mutex.protect output_lock (fun () -> *)
-  (*     let cursor = Cursor.create output_dir |> Result.get_ok in *)
-  (*     Serializer.serialize Const.buffer_size td.columns stream cursor; *)
-  (*     Cursor.truncate cursor; *)
-  (*     Cursor.close cursor) *)
-  (* ;; *)
-
-  let with_read ~resolver td ms f =
+  let with_read ?column_filter ~resolver td ms f =
     let open TableData in
-    let cursors =
-      List.map
-        (fun file_id -> Cursor.create (resolver td.id file_id ms) |> Result.get_ok)
-        td.files
-    in
-    let res =
-      cursors
-      |> List.map (fun cursor -> Deserializer.deserialize cursor |> snd)
-      |> List.to_seq
-      |> Seq.concat
-      |> f
-    in
-    List.iter Cursor.close cursors;
-    res
+    Seq.unfold
+      (function
+        | cursor_opt, [] ->
+          Option.iter Cursor.close cursor_opt;
+          None
+        | cursor_opt, file_id :: file_ids ->
+          Option.iter Cursor.close cursor_opt;
+          let cursor = Cursor.create (resolver td.id file_id ms) |> Result.get_ok in
+          Some
+            ( Deserializer.deserialize ?column_filter cursor |> snd
+            , (Some cursor, file_ids) ))
+      (None, td.files)
+    |> Seq.concat
+    |> f
   ;;
 end
 
@@ -125,13 +116,8 @@ let save (ms : t) =
   Unix.single_write_substring ms_fd ms_json 0 (String.length ms_json) |> ignore
 ;;
 
-let resolve_table_directory tid ms =
-  Printf.sprintf "%s/%s" ms.config.table_directory (Uuid.to_string tid)
-;;
-
-let resolve_result_directory rid ms =
-  Printf.sprintf "%s/%s" ms.config.result_directory (Uuid.to_string rid)
-;;
+let resolve_table_directory tid ms = ms.config.table_directory // Uuid.to_string tid
+let resolve_result_directory rid ms = ms.config.result_directory // Uuid.to_string rid
 
 let resolve_table_path tid sid ms =
   Printf.sprintf "%s/%s.bin" (resolve_table_directory tid ms) (Uuid.to_string sid)
@@ -141,9 +127,7 @@ let resolve_result_path rid sid ms =
   Printf.sprintf "%s/%s.bin" (resolve_result_directory rid ms) (Uuid.to_string sid)
 ;;
 
-let resolve_data_path relative_path ms =
-  Printf.sprintf "%s/%s" ms.config.data_directory relative_path
-;;
+let resolve_data_path relative_path ms = ms.config.data_directory // relative_path
 
 let create_table _id td ms =
   Mutex.protect ms.store_lock
@@ -202,8 +186,14 @@ let drop_all_results ms =
   Hashtbl.reset ms.id_results
 ;;
 
-let with_read_table td ms f = with_read ~resolver:resolve_table_path td ms f
-let with_read_result td ms f = with_read ~resolver:resolve_result_path td ms f
+let with_read_table ?column_filter td ms f =
+  with_read ?column_filter ~resolver:resolve_table_path td ms f
+;;
+
+let with_read_result ?column_filter td ms f =
+  with_read ?column_filter ~resolver:resolve_result_path td ms f
+;;
+
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
 let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
 let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id
@@ -218,4 +208,17 @@ let append_table td ms stream =
   Cursor.close cursor;
   let output_lock = Hashtbl.find ms.locks td.id in
   Mutex.protect output_lock @@ fun () -> td.files <- new_file_id :: td.files
+;;
+
+(** unprotected write, used for sorting, doesn't close the cursor*)
+let write path columns stream =
+  let cursor = Cursor.create path |> Result.get_ok in
+  Serializer.serialize ~encode:false Const.buffer_size columns stream cursor;
+  Cursor.truncate cursor;
+  (* Unix.fsync cursor.map.fd; *)
+  cursor
+;;
+
+let read_cursor cursor =
+  Cursor.seek 0 cursor |> Deserializer.deserialize ~decode:false |> snd
 ;;

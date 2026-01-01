@@ -1,0 +1,7 @@
+CompileFlags: # Tweak the parse settings, example directory given to show format
+  Add:
+    - "-I/nix/store/ypzb47w33xpc56j91qxam2bahs3198w9-ocaml-5.3.0/include" # e.g `-I/usr/include/SDL2`  suggested from @Palmkeep
+    - -std=c23
+    - -Wall
+    - -Wextra
+Compiler: clang

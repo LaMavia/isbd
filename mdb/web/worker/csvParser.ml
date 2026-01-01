@@ -7,11 +7,13 @@ let parse_value (type_ : col) value =
     (try `DataInt (Int64.of_string value) |> Result.ok with
      | Failure details ->
        Error
-         QueryTask.
-           { message = "Failed to parse INT64"
-           ; details =
-               Printf.sprintf "Failed to parse value «%s». Error: %s" value details
-           })
+         Models.MultipleProblemsError.
+           [ { error = "Failed to parse INT64"
+             ; context =
+                 Some
+                   (Printf.sprintf "Failed to parse value «%s». Error: %s" value details)
+             }
+           ])
   | `ColVarchar -> Result.Ok (`DataVarchar value)
 ;;
 
@@ -21,9 +23,16 @@ let parse_value (type_ : col) value =
 let parse_channel ~selector ~columns csv_channel =
   let aux () =
     try
-      Csv.next csv_channel
-      |> Array.of_list
-      |> selector
+      let row = Csv.next csv_channel |> Array.of_list |> selector in
+      if Array.length row <> Array.length columns
+      then
+        raise
+          (Invalid_argument
+             (Printf.sprintf
+                "Expected row to be of length %d but got %d instead"
+                (Array.length columns)
+                (Array.length row)));
+      row
       |> Array.combine columns
       |> Array.map (fun (t, v) ->
         parse_value t v |> Utils.Unwrap.result ~exc:QueryTask.make_error)
@@ -32,9 +41,11 @@ let parse_channel ~selector ~columns csv_channel =
     | Csv.Failure (row, field, msg) ->
       raise
       @@ QueryTask.make_error
-           { message = "Invalid CSV file"
-           ; details = Printf.sprintf "row: %d, field: %d, message: %s" row field msg
-           }
+           [ { error = "Invalid CSV file"
+             ; context =
+                 Some (Printf.sprintf "row: %d, field: %d, message: %s" row field msg)
+             }
+           ]
     | End_of_file -> None
   in
   Seq.of_dispenser aux
@@ -43,5 +54,5 @@ let parse_channel ~selector ~columns csv_channel =
 let read_csv ~has_header path =
   Unix.openfile path [ O_RDONLY ] 0o640
   |> Unix.in_channel_of_descr
-  |> Csv.of_channel ~has_header
+  |> Csv.of_channel ~has_header ~strip:true
 ;;

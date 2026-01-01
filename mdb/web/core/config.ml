@@ -8,14 +8,15 @@ type t =
 let of_env () =
   let open Sys in
   let open Utils in
+  let open Unix in
   let getvar key =
     getenv_opt key
     |> Unwrap.option ~message:(Printf.sprintf "Env variable %s is undefined" key)
   in
   let self =
-    { table_directory = getvar "TABLE_DIRECTORY"
-    ; result_directory = getvar "RESULT_DIRECTORY"
-    ; data_directory = getvar "DATA_DIRECTORY"
+    { table_directory = getvar "TABLE_DIRECTORY" |> realpath
+    ; result_directory = getvar "RESULT_DIRECTORY" |> realpath
+    ; data_directory = getvar "DATA_DIRECTORY" |> realpath
     ; metastore_path = getvar "METASTORE_PATH"
     }
   in

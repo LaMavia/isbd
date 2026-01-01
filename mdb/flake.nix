@@ -26,6 +26,7 @@
           legacyPackages = nixpkgs.legacyPackages.${system};
           ocamlPackages = legacyPackages.ocamlPackages;
           callPackage = legacyPackages.callPackage;
+          llvm = legacyPackages.llvmPackages_latest;
         in
         rec {
           # The package that will be built or run by default. For example:
@@ -35,7 +36,7 @@
           #
           default = self.packages.${system}.mdb;
 
-          mdb = ocamlPackages.buildDunePackage {
+          mdb = ocamlPackages.buildDunePackage rec {
             pname = "mdb";
             version = "0.1.0";
             duneVersion = "3";
@@ -49,14 +50,25 @@
               lwt_ppx
               dream
               alcotest
+              alcotest-lwt
               uuidm
               csv
+              containers
+              cohttp-async
+              cohttp-lwt-unix
               # legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })
             ];
 
             strictDeps = false;
+            # CPATH = builtins.concatStringsSep ":" [
+            #   (lib.makeSearchPathOutput "dev" "include" [ legacyPackages.glibc ])
+            #   (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+            # ];
+            #
+            # LD_LIBRARY_PATH = "$LD_LIBRARY_PATH:${CPATH}";
+            # LIBCLANG_PATH = "${legacyPackages.libclang.lib}/lib";
           };
         });
 
@@ -171,11 +183,14 @@
           legacyPackages = nixpkgs.legacyPackages.${system};
           pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
           ocamlPackages = legacyPackages.ocamlPackages;
+          llvm = pkgs.llvmPackages_latest;
+
         in
         {
-          default = legacyPackages.mkShell {
+          default = legacyPackages.mkShell rec {
 
             packages = (with pkgs; [
+              heaptrack
               nixpkgs-fmt
               ocamlformat
               fswatch
@@ -184,9 +199,17 @@
               perf
               ttyplot
               unixtools.xxd
+              cmake
+              llvm.lldb
+
+              clang-tools
+              llvm.clang
               (callPackage ./packages/ocaml_lz4.nix { })
+              # (callPackage ./packages/ocaml_memtrace_viewer.nix { })
+
               bun
               postman
+              hotspot
             ]) ++ (with ocamlPackages; [
               memtrace
               utop
@@ -199,6 +222,25 @@
             inputsFrom = [
               self.packages.${system}.mdb
             ];
+
+            buildInputs = [
+              llvm.libcxx
+              pkgs.glibc
+            ];
+
+
+            CPATH = builtins.concatStringsSep ":" [
+              (lib.makeSearchPathOutput "dev" "include" [ pkgs.libcxx ])
+              # (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+              (lib.makeSearchPath "include" [ ocamlPackages.ocaml ])
+            ];
+
+            shellHook = ''
+              # Augment the dynamic linker path
+              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${CPATH}"
+              export LIBCLANG_PATH="${pkgs.libclang.lib}/lib";
+            '';
+
           };
         });
     };

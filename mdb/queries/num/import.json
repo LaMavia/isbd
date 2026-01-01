@@ -1,0 +1,7 @@
+{
+  "queryDefinition": {
+    "sourceFilepath": "./MOCK_DATA.csv",
+    "destinationTableName": "num",
+    "doesCsvContainHeader": true
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "queryDefinition": {
+    "columnClauses": [{ "tableName": "person", "columnName": "Index" }]
+  }
+}

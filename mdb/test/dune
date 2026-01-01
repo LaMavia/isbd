@@ -3,9 +3,17 @@
 ; - https://dune.readthedocs.io/en/stable/tests.html
 ; - https://dune.readthedocs.io/en/stable/dune-files.html#tests-stanza
 
-(test
- (name e2e)
- (libraries alcotest lib))
+(include_subdirs qualified)
+
+; (test
+;  (name e2e)
+;  (libraries alcotest lib))
+
+; (test
+;  (name sorting)
+;  (libraries alcotest lib web)
+;  (preprocess
+;   (pps lwt_ppx ppx_yojson_conv)))
 
 ; (test
 ;  (name api_route_stubs)
@@ -14,6 +22,20 @@
 ; (test
 ;  (name json)
 ;  (libraries alcotest dream web yojson)
+;  (preprocess
+;   (pps lwt_ppx ppx_yojson_conv)))
+
+; (tests
+;  (names json)
+;  (libraries
+;   alcotest
+;   alcotest-lwt
+;   dream
+;   web
+;   yojson
+;   cohttp
+;   cohttp-lwt-unix
+;   utils)
 ;  (preprocess
 ;   (pps lwt_ppx ppx_yojson_conv)))
 

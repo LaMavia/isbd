@@ -1,0 +1,16 @@
+{
+  "queryDefinition": {
+    "columnClauses": [1, { "tableName": "my_table", "columnName": "col2" }],
+    "whereClause": {
+      "operator": "LESS_THAN",
+      "leftOperand": { "tableName": "my_table", "columnName": "col1" },
+      "rightOperand": 2
+    },
+    "orderByClause": [
+      {
+        "columnIndex": 0,
+        "ascending": true
+      }
+    ]
+  }
+}

@@ -6,8 +6,12 @@ type problem =
   }
 [@@deriving yojson]
 
-type t = problem list [@@deriving yojson]
+type t = { problems : problem list } [@@deriving yojson]
 
 exception MultipleProblemsError of t
 
 let make e = MultipleProblemsError e
+
+let of_string_result error =
+  Result.map_error (fun msg -> [ { error; context = Some msg } ])
+;;

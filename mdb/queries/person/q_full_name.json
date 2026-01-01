@@ -1,0 +1,34 @@
+{
+  "queryDefinition": {
+    "columnClauses": [
+      { "tableName": "person", "columnName": "Index" },
+      {
+        "functionName": "CONCAT",
+        "arguments": [
+          {
+            "functionName": "UPPER",
+            "arguments": [{ "tableName": "person", "columnName": "Last Name" }]
+          },
+          {
+            "functionName": "CONCAT",
+            "arguments": [
+              " ",
+              { "tableName": "person", "columnName": "First Name" }
+            ]
+          }
+        ]
+      }
+    ],
+    "whereClause": {
+      "operator": "EQUAL",
+      "leftOperand": { "tableName": "person", "columnName": "Sex" },
+      "rightOperand": "Female"
+    },
+    "orderByClause": [
+      {
+        "columnIndex": 1,
+        "ascending": true
+      }
+    ]
+  }
+}

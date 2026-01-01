@@ -1,0 +1,15 @@
+data/*
+result
+results/*
+tables
+heaptrack*
+./*.bin
+node_modules
+_build
+.vscode
+.github
+.direnv
+bun.lock
+*.ctf
+*.data*
+*.output

@@ -21,7 +21,6 @@ let byte_of_col = function
 module type LogicalColumn = sig
   type t
 
-  val load_mut : Chunk.t -> Stateful_buffers.t -> int array -> int -> unit
   val serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit
   val decode_fragments : Stateful_buffers.t -> int array -> int -> unit
   val encode_fragments : Stateful_buffers.t -> int -> unit
@@ -66,92 +65,24 @@ module Columns = struct
         Option.some r)
     ;;
 
-    let rec decode_fragments bfs bi flens fi =
+    let decode_fragments bfs bi flens fi =
       let enc_len = flens.(fi) in
       let a = get_buffer bfs bi in
-      a.length <- enc_len;
-      let decoded_values =
-        Seq.of_dispenser (decode_vle a) |> Seq.map (decode_delta ()) |> List.of_seq
-      in
-      let a' = create_bytes (List.length decoded_values * 8) in
-      List.iteri (fun i n -> set_int64_be a' (i * 8) n) decoded_values;
-      set_buffer bfs bi a';
-      (get_buffer bfs bi).length <- Array1.dim a'
-
-    and decode_vle a =
-      let pos = ref 0 in
-      fun () ->
-        if !pos >= a.length then Option.None else decode_vle_head a pos |> Option.some
-
-    and decode_vle_head a pos =
-      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
-      let continue = octet >= 0b10000000
-      and sign = if Int.logand octet 0b01000000 > 0 then -1L else 1L
-      and rest = Int.logand octet 0b00111111 in
-      let u = rest |> Int64.of_int in
-      pos := !pos + 1;
-      if continue then decode_vle_tail sign u 6 a pos else Int64.mul sign u
-
-    and decode_vle_tail sign u shift a pos =
-      let octet = Stateful_buffers.get_uint8 a.buffer !pos in
-      let continue = octet >= 0b10000000
-      and rest = Int.logand octet 0b01111111 in
-      let u = Int64.shift_left (Int64.of_int rest) shift |> Int64.add u in
-      pos := !pos + 1;
-      if continue then decode_vle_tail sign u (shift + 7) a pos else Int64.mul sign u
-
-    and decode_delta () =
-      let last = ref 0L in
-      fun v ->
-        last := Int64.add v !last;
-        !last
+      let a' = create_bytes (External.count_vle_elements a.buffer enc_len * 8) in
+      External.decode_vle a.buffer a' enc_len 0 |> ignore;
+      set_buffer bfs bi a'
     ;;
 
-    let rec encode_fragments bfs bi =
+    let encode_fragments bfs bi =
       let open Array1 in
       let a = get_buffer bfs bi in
       let max_enc_len = Const.max_uint_len * (dim a.buffer / 8) in
       let enc_a = create_stb max_enc_len max_enc_len in
-      Seq.of_dispenser (encode_delta a) |> Seq.iter (encode_vle enc_a);
+      enc_a.position
+      <- Stateful_buffers.External.encode_vle a.buffer enc_a.buffer a.position 0;
       blit (sub enc_a.buffer 0 enc_a.position) (sub a.buffer 0 enc_a.position);
+      free_stb enc_a;
       a.position <- enc_a.position
-
-    and encode_delta a =
-      let last = ref 0L
-      and pos = ref 0 in
-      fun () ->
-        if !pos >= a.position
-        then Option.None
-        else (
-          let v = get_int64_be a.buffer !pos in
-          let r = Int64.sub v !last in
-          last := v;
-          pos := !pos + 8;
-          Option.Some r)
-
-    and encode_vle a v = encode_vle_head a (v < 0L) (Int64.abs v)
-
-    and encode_vle_head (a : stb) is_neg v =
-      let continue_mask = if v > 63L then 0b10000000 else 0b0 (*2^6 - 1*)
-      and sign_mask = if is_neg then 0b01000000 else 0b0
-      and octet_val = Int64.logand v 0b00111111L |> Int64.to_int in
-      let bts = Bytes.make 1 '\000' in
-      Bytes.set_uint8 bts 0 Int.(continue_mask |> logor sign_mask |> logor octet_val);
-      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
-      a.position <- a.position + 1;
-      if continue_mask > 0
-      then encode_vle_tail a (Int64.shift_right_logical v 6) bts
-      else ()
-
-    and encode_vle_tail a v bts =
-      let continue_mask = if v > 127L then 0b10000000 else 0b0 (*2^7 - 1*)
-      and octet_val = Int64.logand v 0b01111111L |> Int64.to_int in
-      Bytes.set_uint8 bts 0 Int.(logor continue_mask octet_val);
-      Stateful_buffers.write_bytes a.buffer a.position 1 bts;
-      a.position <- a.position + 1;
-      if continue_mask > 0
-      then encode_vle_tail a (Int64.shift_right_logical v 7) bts
-      else ()
     ;;
 
     let serialize v bfs bi =
@@ -190,25 +121,27 @@ module Columns = struct
       let str_a = get_buffer bfs bi in
       let compressed_sub = Array1.sub str_a.buffer 0 flens.(fi) in
       let decompressed_strings =
-        LZ4.Bigbytes.decompress ~length:total_str_length compressed_sub
+        LZ4_Storage.decompress ~length:total_str_length compressed_sub
       in
+      let old_buffer = str_a.buffer in
       str_a.buffer <- Stateful_buffers.copy_bytes str_a.buffer;
+      Stateful_buffers.free_bytes old_buffer;
       let len = Array1.dim decompressed_strings in
       if len > str_a.length
       then set_buffer bfs bi decompressed_strings
-      else Array1.(blit decompressed_strings (sub str_a.buffer 0 len))
+      else (
+        Array1.(blit decompressed_strings (sub str_a.buffer 0 len));
+        free_bytes decompressed_strings)
     ;;
 
     let encode_fragments bfs bi =
       let open Array1 in
       let str_a = get_buffer bfs bi in
-      let compressed_strings =
-        LZ4.Bigbytes.compress (sub str_a.buffer 0 str_a.position)
-      in
+      let compressed_strings = LZ4_Storage.compress (sub str_a.buffer 0 str_a.position) in
       let len = dim compressed_strings in
       blit compressed_strings (sub str_a.buffer 0 len);
+      free_bytes compressed_strings;
       str_a.position <- len;
-      str_a.length <- len;
       IntColumn.encode_fragments bfs (bi + 1)
     ;;
 
@@ -227,7 +160,7 @@ module Columns = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
-      let open Utils.Mopt in
+      let open LibUtils.Mopt in
       let vchar_dispenser = VarcharColumn.deserialize_dispenser bfs bi in
       fun () ->
         let* s = vchar_dispenser () in
@@ -239,9 +172,6 @@ module Columns = struct
     and deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
 
     let decode_fragments bfs bi flens fi = VarcharColumn.decode_fragments bfs bi flens fi
-
-    (* Stateful_buffers.print_buffers "decoded column info" bfs *)
-
     let encode_fragments bfs bi = VarcharColumn.encode_fragments bfs bi
 
     let serialize (s, t) bfs bi =
@@ -272,16 +202,6 @@ functor
   struct
     let physical_length = V.physical_length
 
-    let load_mut chunk bfs frag_lengths frag_i =
-      for i = 0 to physical_length do
-        let buffer = Stateful_buffers.get_buffer bfs (frag_i + i) in
-        let len = frag_lengths.(frag_i + i) in
-        Array1.(blit Chunk.(sub chunk.data chunk.pos len) buffer.buffer);
-        Chunk.(chunk.pos <- chunk.pos + len)
-      done
-    ;;
-
-    (** TODO: Add error handling, and dependency on [V] *)
     let serialize_mut : Data.Types.t -> Stateful_buffers.t -> int -> unit =
       V.serialize_mut
     ;;
