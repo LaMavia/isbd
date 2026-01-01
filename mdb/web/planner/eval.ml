@@ -368,10 +368,10 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
     in
     match task_opt with
     | None -> Printf.eprintf "[sort-worker %d] done\n%!" worker_idx
-    | Some (temp_dist, cursor) ->
+    | Some (temp_dist, elems) ->
       Printf.eprintf "[sort-worker %d] sorting file %s\n%!" worker_idx temp_dist;
-      ExternalSortInternal.sort_file_in_place ~temp_dist ~cursor ~cols ~cmp;
-      Metastore.Store.Internal.Cursor.seek 0 cursor |> ignore;
+      elems |> Array.sort cmp;
+      elems |> Array.to_seq |> Metastore.Store.write temp_dist cols |> ignore;
       worker_aux ~worker_idx ()
   in
   let workers =
@@ -382,13 +382,12 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
     |> Seq.mapi (fun i group_stream ->
       Printf.eprintf "[%s] writing group %d\n%!" __FUNCTION__ i;
       let temp_dist = make_temp_chunk_file () in
-      let cursor = Metastore.Store.write temp_dist cols group_stream in
-      temp_dist, cursor)
-    |> Seq.map (fun task ->
+      temp_dist, Array.of_seq group_stream)
+    |> Seq.map (fun ((temp_dist, _) as task) ->
       Mutex.protect task_queue_lock (fun () ->
         Queue.add task task_queue;
         Condition.broadcast empty_queue_cond);
-      task)
+      temp_dist)
     |> Array.of_seq
   in
   should_die := true;
@@ -476,6 +475,7 @@ let with_generic_external_sort
   =
   let chunk_descriptors =
     group_chunks ~cols ~est_size ~max_group_size ~n_workers:2 ~cmp stream
+    |> Array.map (fun f -> f, Metastore.Store.Internal.Cursor.create f |> Result.get_ok)
   in
   let n_groups = Array.length chunk_descriptors in
   if n_groups <= k_way_threshold
