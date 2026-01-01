@@ -10,7 +10,7 @@
 
 (generate_opam_files)
 
-; (opam_file_location inside_opam_directory)
+(opam_file_location inside_opam_directory)
 
 (cram enable)
 

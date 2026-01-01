@@ -15,7 +15,7 @@ module Make (IC : Cursor.CursorInterface) = struct
     and cols_lengths_lens = input_len - cols_lengths_offset - offsets_len in
     let cols_bytes = input_cursor |> seek cols_offset |> read cols_lens in
     let cols_lengths_bytes = input_cursor |> read cols_lengths_lens in
-    let bfs = of_list [ cols_bytes; cols_lengths_bytes ] in
+    let@ bfs = of_list [ cols_bytes; cols_lengths_bytes ] in
     if decode
     then
       Column.Columns.ColumnInfoColumn.decode_fragments
@@ -28,7 +28,6 @@ module Make (IC : Cursor.CursorInterface) = struct
     cols_bf.position <- 0;
     cols_lengths_bf.position <- 0;
     let columns = Column.Columns.ColumnInfoColumn.deserialize_seq bfs 0 |> Array.of_seq in
-    free bfs;
     columns, cols_offset
   ;;
 
@@ -96,86 +95,93 @@ module Make (IC : Cursor.CursorInterface) = struct
     (*   buffer_size *)
     (*   max_fraglens_len; *)
     let rec give_record () =
-      match !parsed_record_seq_dispenser () with
-      | Option.None when IC.position input_cursor >= chunks_len ->
-        free fraglen_bfs;
+      try
+        match !parsed_record_seq_dispenser () with
+        | Option.None when IC.position input_cursor >= chunks_len ->
+          free fraglen_bfs;
+          free bfs;
+          Option.None
+        | Option.Some _ as row_opt -> row_opt
+        | Option.None ->
+          let fraglen_a = Stateful_buffers.get_buffer fraglen_bfs 0 in
+          let fraglens_len =
+            (Stateful_buffers.get_int64_be (IC.read 8 input_cursor) 0 |> Int64.to_int) - 8
+          and prev_fraglen_a_length = fraglen_a.length in
+          Array1.(
+            blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
+          fraglen_a.position <- 0;
+          fraglen_a.length <- fraglens_len;
+          if decode
+          then
+            Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
+          (* load each column into bfs *)
+          (* TODO: tu zmodyfikować do selekcji kolumn *)
+          (* INFO: length(flens) = length(column_filter) *)
+          let flens =
+            let bi = ref 0
+            and i = ref 0 in
+            Column.Columns.IntColumn.deserialize_seq fraglen_bfs 0
+            |> Seq.filter_map (fun flen ->
+              let flen = Int64.to_int flen in
+              let li = raw_logcol_of_raw_physcol.(!i) in
+              if Array.mem li column_filter
+              then (
+                let b = Stateful_buffers.get_buffer bfs !bi in
+                Array1.(blit (IC.read flen input_cursor) (sub b.buffer 0 flen));
+                b.length <- flen;
+                bi := !bi + 1;
+                i := !i + 1;
+                Some flen)
+              else (
+                IC.move flen input_cursor |> ignore;
+                i := !i + 1;
+                None))
+            |> Array.of_seq
+          in
+          fraglen_a.length <- prev_fraglen_a_length;
+          if decode
+          then
+            Array.fold_left
+              (fun (i, ci, fi) logcol_opt ->
+                 match logcol_opt with
+                 | Some _ ->
+                   decoders.(i) bfs fi flens fi;
+                   i + 1, ci + 1, fi + phys_lens.(ci)
+                 | None -> i + 1, ci, fi)
+              (0, 0, 0)
+              filtered_logcols
+            |> ignore;
+          Array.iter (fun b -> b.position <- 0) bfs;
+          let n_cols = Array.length resulting_logcols in
+          let _, column_dispensers =
+            Array.fold_left_map
+              (fun (i, ci, bi) logcol_opt ->
+                 match logcol_opt with
+                 | Some _ ->
+                   ( (i + 1, ci + 1, bi + phys_lens.(ci))
+                   , deserializers.(i) bfs bi |> Seq.to_dispenser )
+                 | None -> (i + 1, ci, bi), Fun.const None)
+              (0, 0, 0)
+              filtered_logcols
+          in
+          let aux () =
+            try
+              Some
+                (Array.init n_cols (fun ci ->
+                   let coli = column_filter.(ci) in
+                   column_dispensers.(coli) () |> Option.get))
+            with
+            | Invalid_argument _ -> None
+          in
+          parsed_record_seq_dispenser := aux;
+          empty fraglen_bfs;
+          empty bfs;
+          give_record ()
+      with
+      | e ->
         free bfs;
-        Option.None
-      | Option.Some _ as row_opt -> row_opt
-      | Option.None ->
-        let fraglen_a = Stateful_buffers.get_buffer fraglen_bfs 0 in
-        let fraglens_len =
-          (Stateful_buffers.get_int64_be (IC.read 8 input_cursor) 0 |> Int64.to_int) - 8
-        and prev_fraglen_a_length = fraglen_a.length in
-        Array1.(
-          blit (IC.read fraglens_len input_cursor) (sub fraglen_a.buffer 0 fraglens_len));
-        fraglen_a.position <- 0;
-        fraglen_a.length <- fraglens_len;
-        if decode
-        then Column.Columns.IntColumn.decode_fragments fraglen_bfs 0 [| fraglens_len |] 0;
-        (* load each column into bfs *)
-        (* TODO: tu zmodyfikować do selekcji kolumn *)
-        (* INFO: length(flens) = length(column_filter) *)
-        let flens =
-          let bi = ref 0
-          and i = ref 0 in
-          Column.Columns.IntColumn.deserialize_seq fraglen_bfs 0
-          |> Seq.filter_map (fun flen ->
-            let flen = Int64.to_int flen in
-            let li = raw_logcol_of_raw_physcol.(!i) in
-            if Array.mem li column_filter
-            then (
-              let b = Stateful_buffers.get_buffer bfs !bi in
-              Array1.(blit (IC.read flen input_cursor) (sub b.buffer 0 flen));
-              b.length <- flen;
-              bi := !bi + 1;
-              i := !i + 1;
-              Some flen)
-            else (
-              IC.move flen input_cursor |> ignore;
-              i := !i + 1;
-              None))
-          |> Array.of_seq
-        in
-        fraglen_a.length <- prev_fraglen_a_length;
-        if decode
-        then
-          Array.fold_left
-            (fun (i, ci, fi) logcol_opt ->
-               match logcol_opt with
-               | Some _ ->
-                 decoders.(i) bfs fi flens fi;
-                 i + 1, ci + 1, fi + phys_lens.(ci)
-               | None -> i + 1, ci, fi)
-            (0, 0, 0)
-            filtered_logcols
-          |> ignore;
-        Array.iter (fun b -> b.position <- 0) bfs;
-        let n_cols = Array.length resulting_logcols in
-        let _, column_dispensers =
-          Array.fold_left_map
-            (fun (i, ci, bi) logcol_opt ->
-               match logcol_opt with
-               | Some _ ->
-                 ( (i + 1, ci + 1, bi + phys_lens.(ci))
-                 , deserializers.(i) bfs bi |> Seq.to_dispenser )
-               | None -> (i + 1, ci, bi), Fun.const None)
-            (0, 0, 0)
-            filtered_logcols
-        in
-        let aux () =
-          try
-            Some
-              (Array.init n_cols (fun ci ->
-                 let coli = column_filter.(ci) in
-                 column_dispensers.(coli) () |> Option.get))
-          with
-          | Invalid_argument _ -> None
-        in
-        parsed_record_seq_dispenser := aux;
-        empty fraglen_bfs;
-        empty bfs;
-        give_record ()
+        free fraglen_bfs;
+        raise_notrace e
     in
     resulting_logcols, Seq.of_dispenser give_record
   ;;

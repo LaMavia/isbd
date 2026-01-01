@@ -17,7 +17,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     let cols_bytes = create_bytes max_total_cols_len
     and cols_lengths_bytes = create_bytes max_total_cols_lengths_len
     and offsets_bytes = create_bytes 16 in
-    let bfs = of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ] in
+    let@ bfs = of_list [ cols_bytes; cols_lengths_bytes; offsets_bytes ] in
     (* Serialize each column *)
     logcols
     |> Array.iter (fun logcol -> Column.Columns.ColumnInfoColumn.serialize logcol bfs 0);
@@ -33,8 +33,7 @@ module Make (OC : Cursor.CursorInterface) = struct
     output_cursor
     |> write cols_lengths_bf.position cols_lengths_bf.buffer
     |> write 16 offsets_bytes
-    |> ignore;
-    free bfs
+    |> ignore
   ;;
 
   let serialize
@@ -64,9 +63,10 @@ module Make (OC : Cursor.CursorInterface) = struct
         | _, `ColVarchar -> Column.VarcharLogCol.encode_fragments)
     in
     let total_physcols = Array.fold_right ( + ) phys_lens 0 in
-    let record_bfs =
+    let@ record_bfs =
       create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
-    and chunk_bfs =
+    in
+    let@ chunk_bfs =
       create ~n:total_physcols ~len:buffer_size_suggestion ~actual_length:buffer_size
     in
     (* Printf.eprintf *)
@@ -139,8 +139,6 @@ module Make (OC : Cursor.CursorInterface) = struct
     then (
       encode_fragments ();
       dump_buffers ());
-    write_columns ~encode logcols output_cursor;
-    free record_bfs;
-    free chunk_bfs
+    write_columns ~encode logcols output_cursor
   ;;
 end

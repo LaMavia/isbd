@@ -145,7 +145,7 @@ let print_buffers label (bfs : t) =
          b.length
          (Array1.dim b.buffer)
          b.position;
-       Utils.Debugging.print_hex_bytes "bytes" (Array1.sub b.buffer 0 b.position))
+       LibUtils.Debugging.print_hex_bytes "bytes" (Array1.sub b.buffer 0 b.position))
     bfs
 ;;
 
@@ -168,3 +168,5 @@ module LZ4_Storage : LZ4.S with type storage := big_bytes = struct
     if length' <> length then Array1.sub output 0 length' else output
   ;;
 end
+
+let ( let@ ) o f = Fun.protect ~finally:(fun () -> free o) @@ fun () -> f o

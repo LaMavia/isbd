@@ -10,7 +10,16 @@
  (libraries unix lz4)
  (foreign_stubs
   (language c)
-  (names big_array)))
+  (names big_array)
+  (flags
+   (:standard -Ofast))))
+
+(env
+ (release ;; <- notice the change here
+  (flags
+   (:standard -w -50-32-27-9-69-34-37-33))
+  (ocamlopt_flags
+   (:standard -unsafe -noassert -inline 100))))
 
 ;
 ; (library

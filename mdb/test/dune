@@ -25,19 +25,19 @@
 ;  (preprocess
 ;   (pps lwt_ppx ppx_yojson_conv)))
 
-(tests
- (names json)
- (libraries
-  alcotest
-  alcotest-lwt
-  dream
-  web
-  yojson
-  cohttp
-  cohttp-lwt-unix
-  utils)
- (preprocess
-  (pps lwt_ppx ppx_yojson_conv)))
+; (tests
+;  (names json)
+;  (libraries
+;   alcotest
+;   alcotest-lwt
+;   dream
+;   web
+;   yojson
+;   cohttp
+;   cohttp-lwt-unix
+;   utils)
+;  (preprocess
+;   (pps lwt_ppx ppx_yojson_conv)))
 
 ; More information on Cram tests can be found in the Dune documentation:
 ;

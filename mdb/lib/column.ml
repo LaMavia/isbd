@@ -160,7 +160,7 @@ module Columns = struct
     let physical_length = 2
 
     let rec deserialize_dispenser bfs bi =
-      let open Utils.Mopt in
+      let open LibUtils.Mopt in
       let vchar_dispenser = VarcharColumn.deserialize_dispenser bfs bi in
       fun () ->
         let* s = vchar_dispenser () in

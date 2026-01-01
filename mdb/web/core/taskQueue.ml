@@ -65,7 +65,7 @@ let peek_result_opt id q =
 let pop_result_opt id q =
   with_tq q
   @@ fun q ->
-  let open Lib.Utils.Mopt in
+  let open Lib.LibUtils.Mopt in
   let* r = Hashtbl.find_opt q.results id in
   let* s = Hashtbl.find_opt q.statuses id in
   Hashtbl.remove q.results id;

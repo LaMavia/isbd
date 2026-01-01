@@ -26,6 +26,7 @@
           legacyPackages = nixpkgs.legacyPackages.${system};
           ocamlPackages = legacyPackages.ocamlPackages;
           callPackage = legacyPackages.callPackage;
+          llvm = legacyPackages.llvmPackages_latest;
         in
         rec {
           # The package that will be built or run by default. For example:
@@ -35,7 +36,7 @@
           #
           default = self.packages.${system}.mdb;
 
-          mdb = ocamlPackages.buildDunePackage {
+          mdb = ocamlPackages.buildDunePackage rec {
             pname = "mdb";
             version = "0.1.0";
             duneVersion = "3";
@@ -61,6 +62,13 @@
             ];
 
             strictDeps = false;
+            # CPATH = builtins.concatStringsSep ":" [
+            #   (lib.makeSearchPathOutput "dev" "include" [ legacyPackages.glibc ])
+            #   (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+            # ];
+            #
+            # LD_LIBRARY_PATH = "$LD_LIBRARY_PATH:${CPATH}";
+            # LIBCLANG_PATH = "${legacyPackages.libclang.lib}/lib";
           };
         });
 
@@ -201,6 +209,7 @@
 
               bun
               postman
+              hotspot
             ]) ++ (with ocamlPackages; [
               memtrace
               utop
@@ -221,14 +230,15 @@
 
 
             CPATH = builtins.concatStringsSep ":" [
-              (lib.makeSearchPathOutput "dev" "include" [ pkgs.glibc ])
-              (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+              (lib.makeSearchPathOutput "dev" "include" [ pkgs.libcxx ])
+              # (lib.makeSearchPath "resource-root/include" [ llvm.clang ])
+              (lib.makeSearchPath "include" [ ocamlPackages.ocaml ])
             ];
 
             shellHook = ''
               # Augment the dynamic linker path
-              export "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${CPATH}"
-              export "LIBCLANG_PATH=${pkgs.libclang.lib}/lib";
+              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${CPATH}"
+              export LIBCLANG_PATH="${pkgs.libclang.lib}/lib";
             '';
 
           };

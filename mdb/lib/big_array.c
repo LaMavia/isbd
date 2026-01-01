@@ -13,7 +13,7 @@ CAMLprim value caml_create_big_bytes(intptr_t length) {
     caml_invalid_argument("negative big_bytes length");
   }
 
-  char *result = malloc(sizeof(char) * length);
+  char *result = (char *)malloc(sizeof(char) * length);
   if (result == NULL) {
     caml_raise_out_of_memory();
   }
@@ -33,9 +33,11 @@ CAMLprim value caml_create_big_bytes_byte(value length) {
 CAMLexport void caml_free_big_bytes(value v) {
   struct caml_ba_array *b = Caml_ba_array_val(v);
   if ((enum caml_ba_managed)(b->flags & CAML_BA_MANAGED_MASK) ==
-      CAML_BA_EXTERNAL) {
+          CAML_BA_EXTERNAL &&
+      b->data != NULL) {
     // printf("Freeing %p, length=%ld\n", b, b->dim[0]);
     free(b->data);
+    b->data = NULL;
   }
 }
 
