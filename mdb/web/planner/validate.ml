@@ -64,7 +64,8 @@ end
 let validate ms seen_table seen_columns e =
   let open Utils.Let.Res in
   let rec validate_ce
-    : ColumnExpression.t -> (ColumnExpression.expr_type, MultipleProblemsError.t) result
+    :  ColumnExpression.t
+    -> (ColumnExpression.expr_type, MultipleProblemsError.problem list) result
     = function
     | `Literal l -> validate_lit l
     | `Function f -> validate_function f

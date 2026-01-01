@@ -15,4 +15,4 @@ type res_ =
 
 type result_ = (res_, err) result [@@deriving yojson]
 
-let make_error e = QueryTaskError e
+let make_error e = QueryTaskError { problems = e }

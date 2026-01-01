@@ -16,7 +16,11 @@ let process_select ms tq task_id query_definition query =
       (fun () ->
          match Planner.Validate.validate_select_query ms query with
          | _, Error problems ->
-           TaskQueue.add_result task_id (Error problems) Failed tq;
+           TaskQueue.add_result
+             task_id
+             (Error Models.MultipleProblemsError.{ problems })
+             Failed
+             tq;
            None
          | td_opt, Ok (query, column_types, seen_columns) ->
            let query = Planner.Preprocess.preprocess_select_query query in
@@ -140,7 +144,7 @@ let process_copy ms tq task_id query =
   let open Models.MultipleProblemsError in
   let table_name = query.destination_table_name in
   let csv_path = Metastore.Store.resolve_data_path query.source_filepath ms in
-  let error_handler e = TaskQueue.add_result task_id (Error e) Failed tq in
+  let error_handler e = TaskQueue.add_result task_id (Error { problems = e }) Failed tq in
   if not (Sys.is_regular_file csv_path)
   then
     error_handler
@@ -201,10 +205,12 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
            task_id
            (Error
               Models.MultipleProblemsError.
-                [ { error = Printf.sprintf "Unexpected error %s" e_str
-                  ; context = Some e_stack
-                  }
-                ])
+                { problems =
+                    [ { error = Printf.sprintf "Unexpected error %s" e_str
+                      ; context = Some e_stack
+                      }
+                    ]
+                })
            Failed
            tq);
       Logger.log `Info "DONE";

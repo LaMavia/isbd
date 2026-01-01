@@ -1,7 +1,7 @@
 open Models
 (* open Core *)
 
-type t = (Lib.Data.Types.t, MultipleProblemsError.t) result
+type t = (Lib.Data.Types.t, MultipleProblemsError.problem list) result
 
 module Exc = struct
   open MultipleProblemsError

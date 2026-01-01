@@ -16,12 +16,15 @@ node_modules
 tables/*
 results/*
 mdb_data/*
+test/api_tests/client/*
 
 !tables/.*
 !results/.*
 !mdb_data/.*
+!test/api_tests/client/.*
 
 *.zst
 
 data/*
 !data/.gitkeep
+

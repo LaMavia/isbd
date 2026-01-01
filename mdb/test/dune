@@ -3,6 +3,8 @@
 ; - https://dune.readthedocs.io/en/stable/tests.html
 ; - https://dune.readthedocs.io/en/stable/dune-files.html#tests-stanza
 
+(include_subdirs qualified)
+
 ; (test
 ;  (name e2e)
 ;  (libraries alcotest lib))
@@ -22,6 +24,20 @@
 ;  (libraries alcotest dream web yojson)
 ;  (preprocess
 ;   (pps lwt_ppx ppx_yojson_conv)))
+
+(tests
+ (names json)
+ (libraries
+  alcotest
+  alcotest-lwt
+  dream
+  web
+  yojson
+  cohttp
+  cohttp-lwt-unix
+  utils)
+ (preprocess
+  (pps lwt_ppx ppx_yojson_conv)))
 
 ; More information on Cram tests can be found in the Dune documentation:
 ;

@@ -49,9 +49,12 @@
               lwt_ppx
               dream
               alcotest
+              alcotest-lwt
               uuidm
               csv
               containers
+              cohttp-async
+              cohttp-lwt-unix
               # legacyPackages.libunwind
               # (callPackage ./packages/openapi_router.nix { })
               (callPackage ./packages/ocaml_lz4.nix { })

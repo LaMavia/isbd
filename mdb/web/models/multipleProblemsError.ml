@@ -6,7 +6,7 @@ type problem =
   }
 [@@deriving yojson]
 
-type t = problem list [@@deriving yojson]
+type t = { problems : problem list } [@@deriving yojson]
 
 exception MultipleProblemsError of t
 

@@ -4,7 +4,7 @@ let res_of_exc ?(problems = []) e =
   let exc = Printexc.to_string e
   and stack = Printexc.get_backtrace () in
   let problem = { error = exc; context = Some stack } in
-  [%yojson_of: t] (problem :: problems)
+  [%yojson_of: t] { problems = problem :: problems }
   |> Yojson.Safe.to_string
   |> Dream.json ~status:`Bad_Request
 ;;

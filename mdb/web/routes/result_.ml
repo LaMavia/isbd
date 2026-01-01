@@ -53,8 +53,8 @@ let get_handler (req : Dream.request) =
                   Models.ColumnValue.of_lib_array (snd td.columns.(col_i)) col_data)
                data
            in
-           { columns; row_count = Some row_count }
-           |> [%yojson_of: t]
+           [ { columns; row_count = Some row_count } ]
+           |> [%yojson_of: Models.ResponseQueryResult.t]
            |> Yojson.Safe.to_string
            |> Dream.json ~status:`OK)
        in
