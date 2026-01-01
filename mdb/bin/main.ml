@@ -1,5 +1,5 @@
-let () = Dream.run @@ Dream.logger @@ Web.Main.app ()
-(* ~interface:"0.0.0.0" ~port:80 *)
+let () = Dream.run ~interface:"0.0.0.0" ~port:80 @@ Dream.logger @@ Web.Main.app ()
+
 (* let () = *)
 (*   let open Web.Planner.Eval in *)
 (*   let open Lib in *)
