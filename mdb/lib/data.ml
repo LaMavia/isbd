@@ -1,3 +1,13 @@
+module External = struct
+  external compare_int64
+    :  (int64[@unboxed])
+    -> (int64[@unboxed])
+    -> (int[@untagged])
+    = "caml_compare_int64_byte" "caml_compare_int64"
+
+  external compare_string : string -> string -> int = "caml_string_compare"
+end
+
 module Types = struct
   type t =
     [ `DataInt of int64
@@ -38,6 +48,15 @@ module Types = struct
     | `DataInt i -> string_of_int (Int64.to_int i)
     | `DataVarchar s -> Printf.sprintf "«%s»" s
     | `DataBool b -> Printf.sprintf "%b" b
+  ;;
+
+  let cmp (a : t) (b : t) =
+    match a, b with
+    | `DataInt ai, `DataInt bi -> External.compare_int64 ai bi
+    | `DataVarchar avc, `DataVarchar bvc -> External.compare_string avc bvc
+    | _ ->
+      invalid_arg
+        (Printf.sprintf "[%s] can't compare %s, and %s" __LOC__ (to_str a) (to_str b))
   ;;
 end
 

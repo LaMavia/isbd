@@ -10,7 +10,7 @@
  (libraries unix lz4)
  (foreign_stubs
   (language c)
-  (names big_array)
+  (names big_array cmp)
   (flags
    (:standard -Ofast))))
 

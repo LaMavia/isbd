@@ -501,12 +501,12 @@ let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
         (fun OrderByExpression.{ ascending; _ } -> if ascending then 1 else -1)
         order_by_clause
     in
-    let cmp_length = Array.length order_by_clause in
+    (* let cmp_length = Array.length order_by_clause in *)
     let cmp a b =
-      Seq.init cmp_length (fun i ->
-        let ci = order_by_clause.(i).column_index in
-        asc.(i) * compare a.(ci) b.(ci))
-      |> Seq.find (( <> ) 0)
+      order_by_clause
+      |> Array.find_mapi (fun i OrderByExpression.{ column_index = ci; _ } ->
+        let cmp_v = asc.(i) * Lib.Data.Types.cmp a.(ci) b.(ci) in
+        if cmp_v <> 0 then Some cmp_v else None)
       |> Option.value ~default:0
     in
     stream
@@ -515,7 +515,7 @@ let with_sort ~ms:_ ~td ~order_by_clause_opt f stream =
          ~cols:Metastore.TableData.(td.columns)
          ~cmp
          ~est_size:Lib.Data.approx_record_size
-         ~max_group_size:(Metastore.Const.buffer_size / Array.length td.columns)
+         ~max_group_size:Metastore.Const.buffer_size
          ~k_way_threshold:Config.max_k_merge
          f
   | None -> f stream
