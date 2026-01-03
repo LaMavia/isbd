@@ -348,7 +348,9 @@ end
 
 let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
   let should_die = ref false
+  and max_queue_length = 5
   and empty_queue_cond = Condition.create ()
+  and full_queue_cond = Condition.create ()
   and task_queue_lock = Mutex.create ()
   and task_queue = Queue.create () in
   let rec worker_aux ~worker_idx () =
@@ -362,7 +364,9 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
             if !should_die
             then will_stop := true
             else Condition.wait empty_queue_cond task_queue_lock
-          | Some t -> task := Some t
+          | Some t ->
+            task := Some t;
+            Condition.broadcast full_queue_cond
         done;
         !task)
     in
@@ -385,6 +389,9 @@ let group_chunks ~n_workers ~cmp ~cols ~est_size ~max_group_size stream =
       temp_dist, Array.of_seq group_stream)
     |> Seq.map (fun ((temp_dist, _) as task) ->
       Mutex.protect task_queue_lock (fun () ->
+        while Queue.length task_queue > max_queue_length do
+          Condition.wait full_queue_cond task_queue_lock
+        done;
         Queue.add task task_queue;
         Condition.broadcast empty_queue_cond);
       temp_dist)
