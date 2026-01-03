@@ -35,7 +35,7 @@ Przykładowe uruchomienie dockera
 
 ```sh
 make docker
-docker run -d -v ./data:/data -v mdb_data:/mdb_data -p 8080:80 zs438730:latest
+docker run -d -v ./data:/data -v ./mdb_data:/mdb_data -p 8080:80 zs438730:latest
 ```
 
 # Lokalnie
