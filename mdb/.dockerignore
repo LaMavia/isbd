@@ -11,5 +11,9 @@ _build
 .direnv
 bun.lock
 *.ctf
+*.perf
 *.data*
 *.output
+nsq.*
+out
+.jpg
