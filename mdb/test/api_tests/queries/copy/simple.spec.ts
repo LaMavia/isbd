@@ -15,6 +15,7 @@ import {
   submitQuery,
   type ColumnReferenceExpression,
   type CopyQuery,
+  type QueryResult,
   type SelectQuery,
 } from "../../client";
 import path from "path";
@@ -90,8 +91,11 @@ test.concurrent("loads", async () => {
     assertDefined(queryId);
 
     const q = await awaitQuery(queryId, 30_000);
+    const qresult = (await (
+      q.result as any as ReadableStream
+    ).json()) as QueryResult;
 
     expectTrue(q.ok, q.error);
-    expect(q.result).toStrictEqual(csvData);
+    expect(qresult).toStrictEqual(csvData);
   }
 });
