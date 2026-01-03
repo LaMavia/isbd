@@ -13,14 +13,14 @@ CAMLprim value caml_create_big_bytes(intptr_t length) {
     caml_invalid_argument("negative big_bytes length");
   }
 
-  char *result = (char *)malloc(sizeof(char) * length);
+  uint8_t *result = (uint8_t *)malloc(sizeof(uint8_t) * length);
   if (result == NULL) {
     caml_raise_out_of_memory();
   }
 
   intptr_t dims[] = {length};
 
-  return caml_ba_alloc(CAML_BA_CHAR | CAML_BA_C_LAYOUT | CAML_BA_EXTERNAL, 1,
+  return caml_ba_alloc(CAML_BA_UINT8 | CAML_BA_C_LAYOUT | CAML_BA_EXTERNAL, 1,
                        result, dims);
 }
 
@@ -44,7 +44,7 @@ CAMLexport void caml_free_big_bytes(value v) {
 CAMLprim uint8_t caml_get_uint8(value ba_v, intptr_t offset) {
   struct caml_ba_array *b = Caml_ba_array_val(ba_v);
 
-  return *((uint8_t *)(b->data + offset));
+  return *((uint8_t *)b->data + offset);
 }
 
 CAMLprim value caml_get_uint8_byte(value ba_v, value offset_v) {
@@ -52,7 +52,7 @@ CAMLprim value caml_get_uint8_byte(value ba_v, value offset_v) {
 }
 
 inline int64_t get_int64_be(struct caml_ba_array *b, intptr_t offset) {
-  return be64toh(*((int64_t *)(b->data + offset)));
+  return be64toh(*((int64_t *)((uint8_t *)b->data + offset)));
 }
 
 CAMLprim int64_t caml_get_int64_be(value ba_v, intptr_t offset) {
@@ -65,7 +65,7 @@ CAMLprim int64_t caml_get_int64_be_byte(value ba_v, value offset_v) {
 
 inline void set_int64_be(struct caml_ba_array *b, intptr_t offset,
                          int64_t val) {
-  *((int64_t *)(b->data + offset)) = htobe64(val);
+  *((int64_t *)((uint8_t *)b->data + offset)) = htobe64(val);
 }
 
 CAMLexport void caml_set_int64_be(value ba_v, intptr_t offset, int64_t val) {
@@ -90,7 +90,7 @@ CAMLexport void caml_set_int64_be_byte(value ba_v, value offset_v,
 intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
                     intptr_t input_length, intptr_t output_position) {
   int64_t last_value = 0L;
-  void *out_data = out_ba->data;
+  uint8_t *out_data = (uint8_t *)out_ba->data;
 
   for (intptr_t i = 0; i < input_length; i += sizeof(int64_t)) {
     int64_t current_value = get_int64_be(in_ba, i);
@@ -113,7 +113,7 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
     uint8_t octet_val =
         continue_mask | sign_mask | (uint8_t)(val & VLE_HEAD_VAL_MASK);
 
-    *((uint8_t *)(out_data + output_position++)) = octet_val;
+    *((out_data + output_position++)) = octet_val;
 
     val >>= VLE_HEAD_VAL_LENGTH;
     while (continue_mask) {
@@ -122,7 +122,7 @@ intptr_t encode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
       }
 
       octet_val = continue_mask | (uint8_t)(val & VLE_TAIL_VAL_MASK);
-      *((uint8_t *)(out_data + output_position++)) = octet_val;
+      *((out_data + output_position++)) = octet_val;
 
       val >>= VLE_TAIL_VAL_LENGTH;
     }
@@ -171,12 +171,12 @@ CAMLprim value caml_count_vle_elements_byte(value in_ba_v,
 intptr_t decode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
                     intptr_t input_length, intptr_t output_position) {
   int64_t last_value = 0L;
-  void *in_data = in_ba->data;
+  uint8_t *in_data = (uint8_t *)in_ba->data;
 
   for (intptr_t i = 0; i < input_length;) {
     int64_t shift = VLE_HEAD_VAL_LENGTH;
     int64_t acc = 0L;
-    uint8_t octet = *(uint8_t *)(in_data + i++);
+    uint8_t octet = *(in_data + i++);
     int64_t sign = 1L;
     if (octet & VLE_NEG_SIGN_MASK) {
       sign = -1L;
@@ -184,7 +184,7 @@ intptr_t decode_vle(struct caml_ba_array *in_ba, struct caml_ba_array *out_ba,
 
     acc = (int64_t)(octet & VLE_HEAD_VAL_MASK);
     while (octet & VLE_CONTINUE_MASK) {
-      octet = *(uint8_t *)(in_data + i++);
+      octet = *(in_data + i++);
       acc |= (int64_t)(octet & VLE_TAIL_VAL_MASK) << shift;
       shift += VLE_TAIL_VAL_LENGTH;
     }

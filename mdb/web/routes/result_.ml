@@ -37,26 +37,44 @@ let get_handler (req : Dream.request) =
        let open Models.QueryResult in
        let response =
          Metastore.Store.with_read_result td ms (fun data ->
-           let data =
+           Dream.stream ~status:`OK ~close:false
+           @@ fun stream ->
+           let%lwt () = Dream.write stream "[" in
+           let is_first = ref true in
+           let%lwt () =
              data
              |> (match row_limit with
                | None -> Fun.id
                | Some limit -> Seq.take limit)
-             |> Array.of_seq
+             |> Planner.Eval.group_eph_seq
+                  Lib.Data.approx_record_size
+                  Metastore.Const.buffer_size
+             |> Seq.map Array.of_seq
+             |> Lwt_seq.of_seq
+             |> Lwt_seq.iter_s (fun chunk ->
+               let row_count = Array.length chunk
+               and column_count = Array.length td.columns in
+               let data = Matrix.transpose row_count column_count chunk in
+               let columns =
+                 Array.mapi
+                   (fun col_i col_data ->
+                      Models.ColumnValue.of_lib_array (snd td.columns.(col_i)) col_data)
+                   data
+               in
+               let%lwt () =
+                 if !is_first
+                 then (
+                   is_first := false;
+                   Lwt.return_unit)
+                 else Dream.write stream ","
+               in
+               { columns; row_count = Some row_count }
+               |> [%yojson_of: Models.QueryResult.t]
+               |> Yojson.Safe.to_string
+               |> Dream.write stream)
            in
-           let row_count = Array.length data
-           and column_count = Array.length td.columns in
-           let data = Matrix.transpose row_count column_count data in
-           let columns =
-             Array.mapi
-               (fun col_i col_data ->
-                  Models.ColumnValue.of_lib_array (snd td.columns.(col_i)) col_data)
-               data
-           in
-           [ { columns; row_count = Some row_count } ]
-           |> [%yojson_of: Models.ResponseQueryResult.t]
-           |> Yojson.Safe.to_string
-           |> Dream.json ~status:`OK)
+           let%lwt () = Dream.write stream "]" in
+           Dream.close stream)
        in
        if flush_result
        then (

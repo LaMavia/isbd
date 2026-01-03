@@ -36,7 +36,7 @@ let () =
       32_000_000
       cols
       (Seq.init n (fun i ->
-         [| `DataInt (Int64.of_int (i + 1))
+         [| `DataInt (Int64.of_int @@ int_of_float (-1. ** float_of_int i))
           ; `DataInt (Int64.mul 2L (Int64.of_int (i + 1)))
           ; `DataVarchar "Hello"
           ; `DataVarchar "There"

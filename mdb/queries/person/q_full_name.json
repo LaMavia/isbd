@@ -27,6 +27,10 @@
     "orderByClause": [
       {
         "columnIndex": 1,
+        "ascending": false
+      },
+      {
+        "columnIndex": 0,
         "ascending": true
       }
     ]

@@ -28,3 +28,4 @@ test/api_tests/client/*
 data/*
 !data/.gitkeep
 
+nsq.json
