@@ -18,7 +18,11 @@ let process_select ms tq task_id query_definition query =
          | _, Error problems ->
            TaskQueue.add_result
              task_id
-             (Error Models.MultipleProblemsError.{ problems })
+             (Error
+                Core.QueryTask.
+                  { qd = query_definition
+                  ; error = Models.MultipleProblemsError.{ problems }
+                  })
              Failed
              tq;
            None
@@ -92,7 +96,8 @@ let process_select ms tq task_id query_definition query =
              Completed
              tq))
   with
-  | QueryTaskError problems -> TaskQueue.add_result task_id (Error problems) Failed tq
+  | QueryTaskError error ->
+    TaskQueue.add_result task_id (Error { error; qd = query_definition }) Failed tq
 ;;
 
 let make_copy_selector td query =
@@ -138,13 +143,19 @@ let make_copy_selector td query =
            Result.ok @@ fun csv_row -> Array.map (Array.get csv_row) permutation))
 ;;
 
-let process_copy ms tq task_id query =
+let process_copy ms tq task_id query_definition query =
   let open Models.CopyQuery in
   let open QueryTask in
   let open Models.MultipleProblemsError in
   let table_name = query.destination_table_name in
   let csv_path = Metastore.Store.resolve_data_path query.source_filepath ms in
-  let error_handler e = TaskQueue.add_result task_id (Error { problems = e }) Failed tq in
+  let error_handler e =
+    TaskQueue.add_result
+      task_id
+      (Error { error = { problems = e }; qd = query_definition })
+      Failed
+      tq
+  in
   if not (Sys.is_regular_file csv_path)
   then
     error_handler
@@ -176,7 +187,7 @@ let process_copy ms tq task_id query =
          |> Metastore.Store.append_table td ms;
          TaskQueue.add_result
            task_id
-           (Ok { query_definition = QD_CopyQuery query; result_id = None })
+           (Ok { query_definition; result_id = None })
            Completed
            tq))
 ;;
@@ -193,10 +204,13 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
          match query_def with
          | QD_SelectQuery query -> process_select ms tq task_id query_def query
          | QD_CopyQuery query ->
-           process_copy ms tq task_id query;
-           Mutex.protect ms.store_lock @@ fun () -> Metastore.Store.save ms
+           Mutex.protect ms.store_lock
+           @@ fun () ->
+           process_copy ms tq task_id query_def query;
+           Metastore.Store.save ms
        with
-       | QueryTaskError e -> TaskQueue.add_result task_id (Error e) Failed tq
+       | QueryTaskError error ->
+         TaskQueue.add_result task_id (Error { error; qd = query_def }) Failed tq
        | e ->
          let e_stack = Printexc.get_backtrace () in
          let e_str = Printexc.to_string e in
@@ -204,13 +218,16 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
          TaskQueue.add_result
            task_id
            (Error
-              Models.MultipleProblemsError.
-                { problems =
-                    [ { error = Printf.sprintf "Unexpected error %s" e_str
-                      ; context = Some e_stack
-                      }
-                    ]
-                })
+              { error =
+                  Models.MultipleProblemsError.
+                    { problems =
+                        [ { error = Printf.sprintf "Unexpected error %s" e_str
+                          ; context = Some e_stack
+                          }
+                        ]
+                    }
+              ; qd = query_def
+              })
            Failed
            tq);
       Logger.log `Info "DONE";

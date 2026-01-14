@@ -9,12 +9,13 @@ let alt (fs : (string * (Yojson.Safe.t -> 'b)) list) (v : Yojson.Safe.t) : 'b =
          (* Printf.eprintf "DONE\n\n"; *)
          r
        with
-       (* | Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error (exc, json) as e' -> *)
-       (*   Printf.eprintf *)
-       (*     "FAILED: %s on %s\n\n" *)
-       (*     (Printexc.to_string_default exc) *)
-       (*     (Yojson.Safe.to_string json); *)
-       (*   aux fs' e' *)
+       | Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error (exc, json) as e' ->
+         Printf.eprintf
+           "[%s] FAILED: %s on %s\n\n%!"
+           __FUNCTION__
+           (Printexc.to_string_default exc)
+           (Yojson.Safe.to_string json);
+         aux fs' e'
        | e' ->
          (* Printf.eprintf "FAILED: %s\n\n" (Printexc.to_string_default e'); *)
          aux fs' e')

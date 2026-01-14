@@ -4,6 +4,6 @@ type t =
   { query_id : QueryId.t [@key "queryId"]
   ; status : QueryStatus.t
   ; is_result_available : bool option [@yojson.option] [@key "isResultAvailable"]
-  ; query_definition : QueryDefinition.t option [@yojson.option] [@key "queryDefinition"]
+  ; query_definition : QueryDefinition.t [@key "queryDefinition"]
   }
 [@@deriving yojson]

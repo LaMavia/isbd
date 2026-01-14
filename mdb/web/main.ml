@@ -27,6 +27,7 @@ let app () =
              Metastore.Store.save metastore;
              exit 0)));
   AppConfigMiddleware.middleware config
+  @@ PreprintBodyMiddleware.middleware
   @@ UptimeMiddleware.middleware uptime_clock
   @@ MetastoreMiddleware.middleware metastore
   @@ TaskQueueMiddleware.middleware tq

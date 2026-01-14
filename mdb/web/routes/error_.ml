@@ -12,7 +12,16 @@ let routes =
      match TaskQueue.peek_result_opt task_id tq with
      | Some (Error errors), Some Models.QueryStatus.Failed ->
        let open Models.MultipleProblemsError in
-       errors |> [%yojson_of: t] |> Yojson.Safe.to_string |> Dream.json ~status:`OK
+       errors
+       |> (fun e -> e.qd)
+       |> [%yojson_of: Models.QueryDefinition.t]
+       |> Yojson.Safe.pretty_to_string
+       |> Dream.log "Query definition: %s%!";
+       errors
+       |> (fun e -> e.error)
+       |> [%yojson_of: t]
+       |> Yojson.Safe.to_string
+       |> Dream.json ~status:`OK
      | _ ->
        let open Models.Error in
        { message =

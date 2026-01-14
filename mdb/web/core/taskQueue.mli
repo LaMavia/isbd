@@ -48,6 +48,7 @@ val peek_statuses : ('t, 'r, 's) t -> (id * 's) Seq.t
     *)
 val set_status : id -> 's -> ('t, 'r, 's) t -> unit
 
+val peek_task_definition_exc : id -> ('t, 'r, 's) t -> 't
 val stop : ('t, 'r, 's) t -> unit
 
 val show

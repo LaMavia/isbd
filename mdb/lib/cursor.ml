@@ -120,6 +120,12 @@ module MMapCursor = struct
       { map; position = 0; length = map.size } |> Result.ok
     with
     | Failure reason -> Result.error reason
+    | exc ->
+      Result.error
+      @@ Printf.sprintf
+           "[%s] failed to create mmap cursor: %s"
+           __FUNCTION__
+           (Printexc.to_string exc)
   ;;
 
   let move di c =

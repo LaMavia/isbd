@@ -48,7 +48,13 @@ module Internal = struct
           None
         | cursor_opt, file_id :: file_ids ->
           Option.iter Cursor.close cursor_opt;
-          let cursor = Cursor.create (resolver td.id file_id ms) |> Result.get_ok in
+          let path = resolver td.id file_id ms in
+          let cursor =
+            Cursor.create path
+            |> Utils.Unwrap.result ~exc:(fun e ->
+              Invalid_argument
+                (Printf.sprintf "Failed to create cursor for path=%s: %s" path e))
+          in
           Some
             ( Deserializer.deserialize ?column_filter cursor |> snd
             , (Some cursor, file_ids) ))
@@ -145,6 +151,7 @@ let create_result td ms stream =
   Serializer.serialize Const.buffer_size td.columns stream cursor;
   Cursor.truncate cursor;
   Cursor.close cursor;
+  Printf.eprintf "[%s] locking store\n%!" __FUNCTION__;
   Mutex.protect ms.store_lock
   @@ fun () ->
   td.files <- file_id :: td.files;
@@ -153,6 +160,7 @@ let create_result td ms stream =
 
 let drop_table id ms =
   let open Utils.Let.Opt in
+  Dream.log "[%s] Locking store_lock%!" __FUNCTION__;
   Mutex.protect ms.store_lock (fun () ->
     let- table_lock = Hashtbl.find_opt ms.locks id in
     Mutex.protect table_lock
@@ -191,7 +199,9 @@ let with_read_table ?column_filter td ms f =
 ;;
 
 let with_read_result ?column_filter td ms f =
-  with_read ?column_filter ~resolver:resolve_result_path td ms f
+  let result_lock = Hashtbl.find ms.locks TableData.(td.id) in
+  Mutex.protect result_lock
+  @@ fun () -> with_read ?column_filter ~resolver:resolve_result_path td ms f
 ;;
 
 let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id

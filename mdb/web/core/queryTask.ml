@@ -3,9 +3,14 @@ open WebUtils.Yj
 
 type task = { request : Models.ExecuteQueryRequest.t }
 type status = Models.QueryStatus.t [@@deriving yojson]
-type err = Models.MultipleProblemsError.t [@@deriving yojson]
 
-exception QueryTaskError of err
+type err =
+  { error : Models.MultipleProblemsError.t
+  ; qd : Models.QueryDefinition.t
+  }
+[@@deriving yojson]
+
+exception QueryTaskError of Models.MultipleProblemsError.t
 
 type res_ =
   { query_definition : Models.QueryDefinition.t

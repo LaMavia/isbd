@@ -10,6 +10,7 @@ type ('t, 'r, 's) t =
   { queue : (id * 't) Queue.t
   ; results : (id, 'r) Hashtbl.t
   ; statuses : (id, 's) Hashtbl.t
+  ; tasks : (id, 't) Hashtbl.t
   ; lock : Mutex.t
   ; nonempty : Condition.t
   ; mutable should_stop : bool
@@ -19,6 +20,7 @@ let create () =
   { queue = Queue.create ()
   ; results = Hashtbl.create ~random:true 20
   ; statuses = Hashtbl.create ~random:true 20
+  ; tasks = Hashtbl.create ~random:true 20
   ; lock = Mutex.create ()
   ; nonempty = Condition.create ()
   ; should_stop = false
@@ -33,6 +35,7 @@ let add_task task s q =
   let id = Uuid.v4 ()
   and was_empty = Queue.is_empty q.queue in
   Queue.add (id, task) q.queue;
+  Hashtbl.replace q.tasks id task;
   Hashtbl.replace q.statuses id s;
   if was_empty then Condition.broadcast q.nonempty;
   id
@@ -84,6 +87,8 @@ let set_status id status q =
     raise
       (Invalid_argument (Printf.sprintf "task with id=%s doesn't exist" (string_of_id id)))
 ;;
+
+let peek_task_definition_exc id q = with_tq q @@ fun q -> Hashtbl.find q.tasks id
 
 let stop q =
   with_tq q

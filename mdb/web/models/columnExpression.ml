@@ -53,6 +53,8 @@ let literal_of_yojson : Yojson.Safe.t -> literal = function
          (Yojson.Safe.to_string j)
 ;;
 
+type boxed_literal = { value : literal } [@@deriving yojson]
+
 type function_name =
   [ `STRLEN
   | `CONCAT
@@ -174,7 +176,7 @@ let rec t_of_yojson : Yojson.Safe.t -> t =
   WebUtils.Yj.alt
     [ ( "colref"
       , fun j -> `ColumnReferenceExpression (column_reference_expression_of_yojson j) )
-    ; ("literal", fun j -> `Literal (literal_of_yojson j))
+    ; ("literal", fun j -> `Literal (boxed_literal_of_yojson j).value)
     ; ("function", fun j -> `Function (function__of_yojson j))
     ; ("binary", fun j -> `ColumnarBinaryOperation (columnar_binary_operation_of_yojson j))
     ; ("unary", fun j -> `ColumnarUnaryOperation (columnar_unary_operation_of_yojson j))
@@ -191,8 +193,8 @@ and function__of_yojson : Yojson.Safe.t -> function_ = function
      | _ -> Yojson.json_error "function_")
   | _ -> Yojson.json_error "function_"
 
-and columnar_binary_operation_of_yojson : Yojson.Safe.t -> columnar_binary_operation
-  = function
+and columnar_binary_operation_of_yojson : Yojson.Safe.t -> columnar_binary_operation =
+  function
   | `Assoc props ->
     (match
        ( List.assoc_opt "operator" props
@@ -214,8 +216,8 @@ and columnar_binary_operation_of_yojson : Yojson.Safe.t -> columnar_binary_opera
              (r |> yojson_of_option Fun.id |> to_string)))
   | j -> Yojson.json_error (Printf.sprintf "Not assoc: %s" (Yojson.Safe.to_string j))
 
-and columnar_unary_operation_of_yojson : Yojson.Safe.t -> columnar_unary_operation
-  = function
+and columnar_unary_operation_of_yojson : Yojson.Safe.t -> columnar_unary_operation =
+  function
   | `Assoc props ->
     (match List.assoc_opt "operator" props, List.assoc_opt "operand" props with
      | Some op, Some a ->
@@ -234,7 +236,7 @@ and columnar_unary_operation_of_yojson : Yojson.Safe.t -> columnar_unary_operati
 
 let rec yojson_of_t : t -> Yojson.Safe.t = function
   | `ColumnReferenceExpression e -> yojson_of_column_reference_expression e
-  | `Literal e -> yojson_of_literal e
+  | `Literal value -> yojson_of_boxed_literal { value }
   | `Function e -> yojson_of_function_ e
   | `ColumnarBinaryOperation e -> yojson_of_columnar_binary_operation e
   | `ColumnarUnaryOperation e -> yojson_of_columnar_unary_operation e

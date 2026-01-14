@@ -24,9 +24,7 @@ let handler (req : Dream.request) =
           r
     ; query_id = TaskQueue.string_of_id query_id
     ; query_definition =
-        (match r with
-         | Some (Ok qr) -> Some qr.query_definition
-         | _ -> None)
+        (TaskQueue.peek_task_definition_exc query_id tq).request.query_definition
     ; status
     }
     |> [%yojson_of: t]
