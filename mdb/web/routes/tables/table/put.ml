@@ -1,6 +1,7 @@
 open Middleware
+open Core
 
-let column_error schema =
+let column_guard schema =
   let open Models.TableSchema in
   let seen_columns = Hashtbl.create ~random:true (Array.length schema.columns) in
   Array.fold_left
@@ -17,7 +18,7 @@ let column_error schema =
     schema.columns
 ;;
 
-let table_name_error schema ms =
+let table_name_guard schema ms =
   let open Models.TableSchema in
   match Metastore.Store.lookup_table_by_name schema.name ms with
   | Some td ->
@@ -39,11 +40,15 @@ let respond_with_error message =
 
 let handler (req : Dream.request) =
   let ( let$ ) = Utils.Let.Res.handler respond_with_error in
-  let ms = Dream.field req MetastoreMiddleware.field |> Option.get in
+  let ms = Dream.field req MetastoreMiddleware.field |> Option.get
+  and tq = Dream.field req TaskQueueMiddleware.field |> Option.get in
+  let ticket = TaskQueue.get_ticket tq in
   let%lwt body = Dream.body req in
+  TaskQueue.with_ticket tq ticket
+  @@ fun () ->
   let schema = Yojson.Safe.from_string body |> [%of_yojson: Models.TableSchema.t] in
-  let$ () = table_name_error schema ms in
-  let$ () = column_error schema in
+  let$ () = table_name_guard schema ms in
+  let$ () = column_guard schema in
   let id = Core.Uuid.v4 () in
   let td =
     Metastore.TableData.

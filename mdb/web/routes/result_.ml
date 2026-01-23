@@ -1,6 +1,7 @@
 open Middleware
 open Utils
 open Core
+open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 
 let get_handler (req : Dream.request) =
   let open Models.QueryStatus in
@@ -34,51 +35,37 @@ let get_handler (req : Dream.request) =
        |> Yojson.Safe.to_string
        |> Dream.json ~status:`Bad_Request
      | Some td ->
+       Dream.log "Found result%!";
        let open Models.QueryResult in
-       Metastore.Store.with_read_result td ms (fun data ->
-         Dream.stream ~status:`OK ~close:false
-         @@ fun stream ->
-         let%lwt () = Dream.write stream "[" in
-         let is_first = ref true in
-         let%lwt () =
-           data
-           |> (match row_limit with
-             | None -> Fun.id
-             | Some limit -> Seq.take limit)
-           |> Planner.Eval.group_eph_seq
-                Lib.Data.approx_record_size
-                Metastore.Const.buffer_size
-           |> Seq.map Array.of_seq
-           |> Lwt_seq.of_seq
-           |> Lwt_seq.iter_s (fun chunk ->
-             let row_count = Array.length chunk
-             and column_count = Array.length td.columns in
-             let data = Matrix.transpose row_count column_count chunk in
-             let columns =
-               Array.mapi
-                 (fun col_i col_data ->
-                    Models.ColumnValue.of_lib_array (snd td.columns.(col_i)) col_data)
-                 data
-             in
-             let%lwt () =
-               if !is_first
-               then (
-                 is_first := false;
-                 Lwt.return_unit)
-               else Dream.write stream ","
-             in
-             { columns; row_count = Some row_count }
-             |> [%yojson_of: Models.QueryResult.t]
-             |> Yojson.Safe.to_string
-             |> Dream.write stream)
-         in
-         let%lwt () = Dream.write stream "]" in
-         if flush_result
-         then (
-           Dream.log "Flushing result %s" (Uuid.to_string res_id);
-           Metastore.Store.drop_result res_id ms;
-           TaskQueue.pop_result_opt task_id tq |> ignore);
-         Dream.close stream))
+       let res_body =
+         Metastore.Store.with_read_result td ms (fun data ->
+           let chunk =
+             data
+             |> (match row_limit with
+               | None -> Fun.id
+               | Some limit -> Seq.take limit)
+             |> Array.of_seq
+           in
+           let row_count = Array.length chunk
+           and column_count = Array.length td.columns in
+           let data = Matrix.transpose row_count column_count chunk in
+           let columns =
+             Array.mapi
+               (fun col_i col_data ->
+                  Models.ColumnValue.of_lib_array (snd td.columns.(col_i)) col_data)
+               data
+           in
+           Dream.log "Writing chunk%!";
+           [ { columns; row_count = Some row_count } ]
+           |> [%yojson_of: Models.QueryResult.t list]
+           |> Yojson.Safe.to_string)
+       in
+       if flush_result
+       then (
+         Dream.log "Flushing result %s" (Uuid.to_string res_id);
+         Metastore.Store.drop_result res_id ms;
+         TaskQueue.pop_result_opt task_id tq |> ignore);
+       Dream.json ~status:`OK res_body)
   | _ ->
     let open Models.Error in
     { message =

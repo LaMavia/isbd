@@ -1,4 +1,5 @@
 type id
+type ticket
 type ('t, 'r, 's) t
 
 exception ShouldStop
@@ -13,13 +14,16 @@ val id_of_yojson : Yojson.Safe.t -> id
 val create : unit -> ('t, 'r, 's) t
 
 (** [add_task task status tq] add task [task] with status [status] to task queue [tq]. Returns the new task id*)
-val add_task : 't -> 's -> ('t, 'r, 's) t -> id
+val add_task : 't -> ticket -> 's -> ('t, 'r, 's) t -> id
+
+val get_ticket : ('t, 'r, 's) t -> ticket
+val with_ticket : ('t, 'r, 's) t -> ticket -> (unit -> 'a) -> 'a
 
 (** [pop_task status tq] pops the oldest task from the task queue [tq], setting its status to [status]. 
     Returns the pair [(task_id, task)].
 
     If [tq] is empty, hangs until a new task has been submitted via [add_task task status tq].*)
-val pop_task : 's -> ('t, 'r, 's) t -> id * 't
+val pop_task : 's -> ('t, 'r, 's) t -> id * ticket * 't
 
 (** [add_result id result status tq] adds the result [result] for the task with task id [id], and sets its status to [s].
     It doesn't check if the task already exists.
@@ -50,10 +54,3 @@ val set_status : id -> 's -> ('t, 'r, 's) t -> unit
 
 val peek_task_definition_exc : id -> ('t, 'r, 's) t -> 't
 val stop : ('t, 'r, 's) t -> unit
-
-val show
-  :  ?task:('t -> string) option
-  -> ?result:('r -> string) option
-  -> ?status:('s -> string) option
-  -> ('t, 'r, 's) t
-  -> string

@@ -197,7 +197,9 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
   flush_all ();
   try
     while true do
-      let task_id, task = TaskQueue.pop_task Planning tq in
+      let task_id, ticket, task = TaskQueue.pop_task Planning tq in
+      TaskQueue.with_ticket tq ticket
+      @@ fun () ->
       let query_def = task.request.query_definition in
       Logger.log `Info "Starting task: %s" (TaskQueue.string_of_id task_id);
       (try
@@ -214,7 +216,6 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
        | e ->
          let e_stack = Printexc.get_backtrace () in
          let e_str = Printexc.to_string e in
-         (* let e_name = Printexc.exn_slot_name e in *)
          TaskQueue.add_result
            task_id
            (Error
@@ -230,7 +231,7 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
               })
            Failed
            tq);
-      Logger.log `Info "DONE";
+      Logger.log `Info "Finished %s" (TaskQueue.string_of_id task_id);
       flush_all ()
     done
   with

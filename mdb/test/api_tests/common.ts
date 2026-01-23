@@ -151,7 +151,7 @@ export const readCsv = async ({
       undefined
     >,
   } satisfies QueryResult[number];
-  const csv = parse(await f.text(), { header });
+  const csv = parse(await f.text(), { header, delimiter: ";" });
 
   for (const row of csv) {
     if (Object.values(row).length !== columns.length) {
