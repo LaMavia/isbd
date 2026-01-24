@@ -1,7 +1,12 @@
 open Ppx_yojson_conv_lib.Yojson_conv.Primitives
 open WebUtils.Yj
+open Core
 
-type task = { request : Models.ExecuteQueryRequest.t }
+type task =
+  { request : Models.ExecuteQueryRequest.t
+  ; td_opt : Metastore.TableData.t option
+  }
+
 type status = Models.QueryStatus.t [@@deriving yojson]
 
 type err =

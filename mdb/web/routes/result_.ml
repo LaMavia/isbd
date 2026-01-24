@@ -63,7 +63,7 @@ let get_handler (req : Dream.request) =
        if flush_result
        then (
          Dream.log "Flushing result %s" (Uuid.to_string res_id);
-         Metastore.Store.drop_result res_id ms;
+         Metastore.Store.drop_result td ms;
          TaskQueue.pop_result_opt task_id tq |> ignore);
        Dream.json ~status:`OK res_body)
   | _ ->

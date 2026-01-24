@@ -7,26 +7,27 @@ open Models.QueryStatus
 open QueryTask
 open! Utils.Ops
 
-let process_select ms tq task_id query_definition query =
+let process_select ms tq task_id task query_definition query =
   let open Utils.Let.Opt in
   let id = TaskQueue.uuid_of_id task_id in
-  let- td_opt, tlock_opt, query, column_types, seen_columns =
+  let td_opt = task.td_opt in
+  let- tlock_opt, query, column_types, seen_columns =
     Mutex.protect
       Metastore.Store.(ms.store_lock)
       (fun () ->
-         match Planner.Validate.validate_select_query ms query with
-         | _, Error problems ->
+         match Planner.Validate.validate_select_query td_opt query with
+         | Error problems ->
            TaskQueue.add_result
              task_id
              (Error
-                Core.QueryTask.
+                QueryTask.
                   { qd = query_definition
                   ; error = Models.MultipleProblemsError.{ problems }
                   })
              Failed
              tq;
            None
-         | td_opt, Ok (query, column_types, seen_columns) ->
+         | Ok (query, column_types, seen_columns) ->
            let query = Planner.Preprocess.preprocess_select_query query in
            let tlock_opt =
              Option.map Metastore.TableData.(fun td -> Hashtbl.find ms.locks td.id) td_opt
@@ -41,7 +42,7 @@ let process_select ms tq task_id query_definition query =
                   ([%yojson_of: Models.ColumnExpression.t] c |> Yojson.Safe.to_string)
                   (Models.ColumnExpression.string_of_expt_type (List.nth column_types i)))
              query.column_clauses;
-           Some (td_opt, tlock_opt, query, column_types, seen_columns))
+           Some (tlock_opt, query, column_types, seen_columns))
   in
   try
     Fun.protect
@@ -72,17 +73,14 @@ let process_select ms tq task_id query_definition query =
            let open Planner.Eval in
            let eval = make_eval_ce filtered_td_opt in
            let result_td =
-             Metastore.TableData.
-               { name = Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id)
-               ; id
-               ; columns =
-                   column_types
-                   |> List.mapi (fun i t ->
-                     ( Printf.sprintf "c%d" i
-                     , Models.ColumnExpression.lib_of_expr_type_exc t ))
-                   |> Array.of_list
-               ; files = []
-               }
+             Metastore.TableData.create
+               ~name:(Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id))
+               ~id
+               ~columns:
+                 (column_types
+                  |> List.mapi (fun i t ->
+                    Printf.sprintf "c%d" i, Models.ColumnExpression.lib_of_expr_type_exc t)
+                  |> Array.of_list)
            in
            Seq.filter (filter eval query.where_clause) data
            |> Seq.map (map eval query.column_clauses)
@@ -200,11 +198,14 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
       let task_id, ticket, task = TaskQueue.pop_task Planning tq in
       TaskQueue.with_ticket tq ticket
       @@ fun () ->
+      let td_opt = task.td_opt in
       let query_def = task.request.query_definition in
       Logger.log `Info "Starting task: %s" (TaskQueue.string_of_id task_id);
+      Metastore.Store.with_table td_opt ms
+      @@ fun () ->
       (try
          match query_def with
-         | QD_SelectQuery query -> process_select ms tq task_id query_def query
+         | QD_SelectQuery query -> process_select ms tq task_id task query_def query
          | QD_CopyQuery query ->
            Mutex.protect ms.store_lock
            @@ fun () ->

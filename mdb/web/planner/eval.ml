@@ -156,11 +156,11 @@ let filter eval (where_clause_opt : ColumnExpression.t option) =
   | Some where_clause ->
     fun (record : Lib.Data.data_record) ->
       (match eval record where_clause with
-       | Error err -> raise (Core.QueryTask.make_error err)
+       | Error err -> raise (QueryTask.make_error err)
        | Ok (`DataBool (v : bool)) -> v
        | Ok v ->
          raise
-           Core.QueryTask.(
+           QueryTask.(
              make_error
                [ { error = "Unexpected non-bool value in filter during execution"
                  ; context = Some (Printf.sprintf "value: %s" (Lib.Data.Types.to_str v))
@@ -174,7 +174,7 @@ let map
       (record : Lib.Data.data_record)
   =
   Utils.Monad.mmap_result (eval record) column_expressions
-  |> Utils.Unwrap.result ~exc:Core.QueryTask.make_error
+  |> Utils.Unwrap.result ~exc:QueryTask.make_error
 ;;
 
 let k_way_merge (type elem) cmp (streams : elem Seq.t array) =

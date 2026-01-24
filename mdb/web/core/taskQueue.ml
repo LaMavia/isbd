@@ -24,9 +24,9 @@ type ('t, 'r, 's) t =
   ; nonempty : Condition.t
   ; mutable should_stop : bool
   ; next_available_ticket : ticket Atomic.t
-  ; mutable current_ticket : ticket
-  ; my_turn_cond : Condition.t
-  ; my_turn_lock : Mutex.t
+    (* ; mutable current_ticket : ticket *)
+    (* ; my_turn_cond : Condition.t *)
+    (* ; my_turn_lock : Mutex.t *)
   }
 
 let create () =
@@ -37,35 +37,34 @@ let create () =
   ; lock = Mutex.create ()
   ; nonempty = Condition.create ()
   ; should_stop = false
-  ; next_available_ticket = Atomic.make 0
-  ; current_ticket = 0
-  ; my_turn_cond = Condition.create ()
-  ; my_turn_lock = Mutex.create ()
+  ; next_available_ticket =
+      Atomic.make 0
+      (* ; current_ticket = 0 *)
+      (* ; my_turn_cond = Condition.create () *)
+      (* ; my_turn_lock = Mutex.create () *)
   }
 ;;
 
 let with_tq q f = Mutex.protect q.lock (fun () -> f q)
 let get_ticket q = Atomic.fetch_and_add q.next_available_ticket 1
-
-let with_ticket q my_ticket f =
-  Mutex.protect q.my_turn_lock
-  @@ fun () ->
-  Printf.eprintf
-    "[%s] my_ticket=%d, current_ticket=%d\n%!"
-    __FUNCTION__
-    my_ticket
-    q.current_ticket;
-  while my_ticket > q.current_ticket && not q.should_stop do
-    Condition.wait q.my_turn_cond q.my_turn_lock
-  done;
-  Fun.protect
-    ~finally:(fun () ->
-      q.current_ticket <- q.current_ticket + 1;
-      Condition.broadcast q.my_turn_cond)
-    (fun () ->
-       if q.should_stop then raise ShouldStop;
-       f ())
-;;
+let with_ticket _q _my_ticket f = f ()
+(* Mutex.protect q.my_turn_lock *)
+(* @@ fun () -> *)
+(* Printf.eprintf *)
+(*   "[%s] my_ticket=%d, current_ticket=%d\n%!" *)
+(*   __FUNCTION__ *)
+(*   my_ticket *)
+(*   q.current_ticket; *)
+(* while my_ticket > q.current_ticket && not q.should_stop do *)
+(*   Condition.wait q.my_turn_cond q.my_turn_lock *)
+(* done; *)
+(* Fun.protect *)
+(*   ~finally:(fun () -> *)
+(*     q.current_ticket <- q.current_ticket + 1; *)
+(*     Condition.broadcast q.my_turn_cond) *)
+(*   (fun () -> *)
+(*      if q.should_stop then raise ShouldStop; *)
+(*      f ()) *)
 
 let add_task task ticket s q =
   with_tq q

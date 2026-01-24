@@ -1,5 +1,4 @@
 open Lib.Column
-open Core
 
 let parse_value (type_ : col) value =
   match type_ with

@@ -60,8 +60,7 @@ module Exc = struct
   ;;
 end
 
-(** requires a lock on [ms] *)
-let validate ms seen_table seen_columns e =
+let validate td_opt seen_columns e =
   let open Utils.Let.Res in
   let rec validate_ce
     :  ColumnExpression.t
@@ -140,28 +139,21 @@ let validate ms seen_table seen_columns e =
        | lt, rt ->
          Error Exc.[ invalid_arguments operator_name [ `Bool; `Bool ] [ lt; rt ] ])
   and validate_colref ColumnExpression.{ table_name; column_name } =
+    let open Metastore.TableData in
     Hashtbl.replace seen_columns column_name ();
-    match Metastore.Store.lookup_table_by_name table_name ms with
-    | Some td ->
+    match td_opt with
+    | Some td when table_name = td.name ->
       (match Metastore.TableData.find_column_opt td column_name with
-       | Some (_, ct) ->
-         let* () =
-           match !seen_table with
-           | None ->
-             seen_table := Some table_name;
-             Ok ()
-           | Some tname when tname = table_name -> Ok ()
-           | Some tname -> Error Exc.[ multiple_tables_seen tname table_name ]
-         in
-         Ok (ColumnExpression.expr_type_of_lib ct)
+       | Some (_, ct) -> Ok (ColumnExpression.expr_type_of_lib ct)
        | None -> Error Exc.[ column_not_found table_name column_name ])
+    | Some td -> Error Exc.[ multiple_tables_seen td.name table_name ]
     | None -> Error Exc.[ table_not_found table_name ]
   in
   validate_ce e
 ;;
 
-let validate_where_clause ms seen_table seen_columns e =
-  match validate ms seen_table seen_columns e with
+let validate_where_clause seen_table seen_columns e =
+  match validate seen_table seen_columns e with
   | Ok `Bool -> Ok `Bool
   | Ok t ->
     Error
@@ -227,28 +219,54 @@ let validate_limit_clause ({ limit } : LimitExpression.t) =
 
 let error_list_of_res res = Result.fold ~ok:(Fun.const []) ~error:Fun.id res
 
-(** requires a lock on [ms] *)
-let validate_select_query ms (q : SelectQuery.t) =
-  let seen_table = ref None
-  and seen_columns = Hashtbl.create ~random:true 0 in
+let validate_select_query td_opt (q : SelectQuery.t) =
+  let seen_columns = Hashtbl.create ~random:true 0 in
   let select_res =
-    Utils.Monad.mmap_result (validate ms seen_table seen_columns) q.column_clauses
+    Utils.Monad.mmap_result (validate td_opt seen_columns) q.column_clauses
   in
-  let where_res =
-    Option.map (validate_where_clause ms seen_table seen_columns) q.where_clause
-  in
+  let where_res = Option.map (validate_where_clause td_opt seen_columns) q.where_clause in
   let order_res = validate_order_by_clause q in
   let limit_res = Option.map validate_limit_clause q.limit_clause in
-  ( Option.bind !seen_table (fun tname -> Metastore.Store.lookup_table_by_name tname ms)
-  , match select_res, where_res, order_res with
-    | Ok column_types, (Some (Ok `Bool) | None), Ok () ->
-      Ok (q, column_types, seen_columns)
-    | _ ->
-      Error
-        (List.concat
-           [ error_list_of_res select_res
-           ; Option.fold ~none:[] ~some:error_list_of_res where_res
-           ; error_list_of_res order_res
-           ; Option.fold ~none:[] ~some:error_list_of_res limit_res
-           ]) )
+  match select_res, where_res, order_res with
+  | Ok column_types, (Some (Ok `Bool) | None), Ok () -> Ok (q, column_types, seen_columns)
+  | _ ->
+    Error
+      (List.concat
+         [ error_list_of_res select_res
+         ; Option.fold ~none:[] ~some:error_list_of_res where_res
+         ; error_list_of_res order_res
+         ; Option.fold ~none:[] ~some:error_list_of_res limit_res
+         ])
+;;
+
+let get_copy_query_table ms (q : CopyQuery.t) =
+  Metastore.Store.lookup_table_by_name q.destination_table_name ms
+;;
+
+(* Returns the first referenced table that exists *)
+let get_select_query_table ms (q : SelectQuery.t) =
+  let open ColumnExpression in
+  let rec visit_ce : ColumnExpression.t -> Metastore.TableData.t option = function
+    | `ColumnReferenceExpression { table_name; _ } ->
+      Metastore.Store.lookup_table_by_name table_name ms
+    | `ColumnarBinaryOperation { b_left_operand; b_right_operand; _ } ->
+      (match visit_ce b_left_operand with
+       | None -> visit_ce b_right_operand
+       | td -> td)
+    | `ColumnarUnaryOperation { u_operand; _ } -> visit_ce u_operand
+    | `Function { arguments; _ } -> List.fold_left fold_aux None arguments
+    | `Literal _ -> None
+  and fold_aux u ce =
+    match u with
+    | None -> visit_ce ce
+    | Some td -> Some td
+  in
+  List.fold_left fold_aux (Option.bind q.where_clause visit_ce) q.column_clauses
+;;
+
+let get_query_table ms =
+  let open QueryDefinition in
+  function
+  | QD_SelectQuery q -> get_select_query_table ms q
+  | QD_CopyQuery q -> get_copy_query_table ms q
 ;;

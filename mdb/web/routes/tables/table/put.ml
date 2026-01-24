@@ -51,12 +51,10 @@ let handler (req : Dream.request) =
   let$ () = column_guard schema in
   let id = Core.Uuid.v4 () in
   let td =
-    Metastore.TableData.
-      { id
-      ; name = schema.name
-      ; columns = Array.map Models.Column.to_lib schema.columns
-      ; files = []
-      }
+    Metastore.TableData.create
+      ~id
+      ~name:schema.name
+      ~columns:(Array.map Models.Column.to_lib schema.columns)
   in
   Metastore.Store.create_table id td ms;
   MetastoreMiddleware.mark_dirty req;

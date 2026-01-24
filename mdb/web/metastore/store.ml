@@ -158,27 +158,27 @@ let create_result td ms stream =
   set_result td ms
 ;;
 
-let drop_table id ms =
+let drop_table td ms =
   let open Utils.Let.Opt in
+  let open TableData in
   Dream.log "[%s] Locking store_lock%!" __FUNCTION__;
   Mutex.protect ms.store_lock (fun () ->
-    let- table_lock = Hashtbl.find_opt ms.locks id in
+    let- table_lock = Hashtbl.find_opt ms.locks td.id in
     Mutex.protect table_lock
     @@ fun () ->
-    let- td = Hashtbl.find_opt ms.id_tables id in
-    let dir_path = resolve_table_directory id ms in
+    let dir_path = resolve_table_directory td.id ms in
     WebUtils.File.rm_rec dir_path;
     remove_table td.id td.name ms)
 ;;
 
-let drop_result id ms =
+let drop_result td ms =
   let open Utils.Let.Opt in
+  let open TableData in
   Mutex.protect ms.store_lock
   @@ fun () ->
-  let- result_lock = Hashtbl.find_opt ms.locks id in
+  let- result_lock = Hashtbl.find_opt ms.locks td.id in
   Mutex.protect result_lock
   @@ fun () ->
-  let- td = Hashtbl.find_opt ms.id_results id in
   let dir_path = resolve_result_directory td.id ms in
   WebUtils.File.rm_rec dir_path;
   remove_result td.id ms
@@ -204,9 +204,22 @@ let with_read_result ?column_filter td ms f =
   @@ fun () -> with_read ?column_filter ~resolver:resolve_result_path td ms f
 ;;
 
-let lookup_table_by_id id ms = Hashtbl.find_opt ms.id_tables id
-let lookup_table_by_name name ms = Hashtbl.find_opt ms.name_tables name
-let lookup_result_by_id id ms = Hashtbl.find_opt ms.id_results id
+let _protect_sheduled_for_deletion = function
+  | None -> None
+  | Some td -> if Atomic.get TableData.(td.sheduled_for_deletion) then None else Some td
+;;
+
+let lookup_table_by_id id ms =
+  Hashtbl.find_opt ms.id_tables id |> _protect_sheduled_for_deletion
+;;
+
+let lookup_table_by_name name ms =
+  Hashtbl.find_opt ms.name_tables name |> _protect_sheduled_for_deletion
+;;
+
+let lookup_result_by_id id ms =
+  Hashtbl.find_opt ms.id_results id |> _protect_sheduled_for_deletion
+;;
 
 let append_table td ms stream =
   let open TableData in
@@ -232,3 +245,18 @@ let write path columns stream =
 let read_cursor cursor =
   Cursor.seek 0 cursor |> Deserializer.deserialize ~decode:false |> snd
 ;;
+
+let make_with_table_or_result ~remover (td_opt : TableData.t option) ms f =
+  Fun.protect
+    ~finally:(fun () ->
+      Option.iter
+        (fun td ->
+           let open TableData in
+           let prev_ref_count = Atomic.fetch_and_add td.reference_count (-1) in
+           if prev_ref_count = 1 && Atomic.get td.sheduled_for_deletion then remover td ms)
+        td_opt)
+    f
+;;
+
+let with_table td ms f = make_with_table_or_result ~remover:drop_table td ms f
+let with_result td ms f = make_with_table_or_result ~remover:drop_result td ms f
