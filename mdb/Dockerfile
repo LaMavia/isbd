@@ -5,7 +5,7 @@ ENV RESULT_DIRECTORY="/results"
 ENV METASTORE_PATH="/mdb_data/metastore.json"
 ENV DATA_DIRECTORY="/data"
 
-RUN mkdir /results 
+RUN mkdir /results /mdb_data
 
 COPY . /app
 WORKDIR /app
