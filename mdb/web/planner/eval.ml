@@ -115,6 +115,8 @@ let eval_function : Lib.Data.Types.t list -> ColumnExpression.function_name -> t
   | `LOWER, [ `DataVarchar s ] -> Ok (`DataVarchar (String.lowercase_ascii s))
   | `STRLEN, [ `DataVarchar s ] -> Ok (`DataInt (String.length s |> Int64.of_int))
   | `CONCAT, [ `DataVarchar l; `DataVarchar r ] -> Ok (`DataVarchar (String.cat l r))
+  | `REPLACE, [ `DataVarchar s; `DataVarchar old_str; `DataVarchar new_str ] ->
+    Ok (`DataVarchar Str.(global_replace (quote old_str |> regexp) new_str s))
   | fname, args ->
     Error
       [ Exc.unimplemented

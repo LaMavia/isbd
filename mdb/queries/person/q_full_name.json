@@ -6,13 +6,22 @@
         "functionName": "CONCAT",
         "arguments": [
           {
-            "functionName": "UPPER",
-            "arguments": [{ "tableName": "person", "columnName": "Last Name" }]
+            "functionName": "REPLACE",
+            "arguments": [
+              {
+                "functionName": "UPPER",
+                "arguments": [
+                  { "tableName": "person", "columnName": "Last Name" }
+                ]
+              },
+              { "value": "A" },
+              { "value": "@" }
+            ]
           },
           {
             "functionName": "CONCAT",
             "arguments": [
-              " ",
+              { "value": " " },
               { "tableName": "person", "columnName": "First Name" }
             ]
           }
@@ -22,7 +31,7 @@
     "whereClause": {
       "operator": "EQUAL",
       "leftOperand": { "tableName": "person", "columnName": "Sex" },
-      "rightOperand": "Female"
+      "rightOperand": { "value": "Female" }
     },
     "orderByClause": [
       {

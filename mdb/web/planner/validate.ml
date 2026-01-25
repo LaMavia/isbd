@@ -111,6 +111,24 @@ let validate td_opt seen_columns e =
           | `Varchar -> Ok `Int
           | _ -> Error Exc.[ invalid_arguments "STRLEN" [ `Varchar ] [ t ] ])
        | _ -> Error Exc.[ invalid_number_of_arguments "STRLEN" 1 (List.length arguments) ])
+    | `REPLACE ->
+      (match arguments with
+       | [ arg_1; arg_2; arg_3 ] ->
+         let* t1 = validate_ce arg_1
+         and* t2 = validate_ce arg_2
+         and* t3 = validate_ce arg_3 in
+         (match t1, t2, t3 with
+          | `Varchar, `Varchar, `Varchar -> Ok `Varchar
+          | _ ->
+            Error
+              Exc.
+                [ invalid_arguments
+                    "REPLACE"
+                    [ `Varchar; `Varchar; `Varchar ]
+                    [ t1; t2; t3 ]
+                ])
+       | _ ->
+         Error Exc.[ invalid_number_of_arguments "REPLACE" 3 (List.length arguments) ])
   and validate_ue { u_operator; u_operand } =
     let* t = validate_ce u_operand in
     match u_operator, t with

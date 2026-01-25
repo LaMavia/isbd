@@ -61,6 +61,7 @@ type function_name =
   | `CONCAT
   | `UPPER
   | `LOWER
+  | `REPLACE
   ]
 
 let function_name_of_yojson : Yojson.Safe.t -> function_name = function
@@ -68,6 +69,7 @@ let function_name_of_yojson : Yojson.Safe.t -> function_name = function
   | `String "CONCAT" -> `CONCAT
   | `String "UPPER" -> `UPPER
   | `String "LOWER" -> `LOWER
+  | `String "REPLACE" -> `REPLACE
   | j ->
     Yojson.json_error
     @@ Printf.sprintf
@@ -80,6 +82,7 @@ let yojson_of_function_name : function_name -> Yojson.Safe.t = function
   | `CONCAT -> `String "CONCAT"
   | `UPPER -> `String "UPPER"
   | `LOWER -> `String "LOWER"
+  | `REPLACE -> `String "REPLACE"
 ;;
 
 type binary_operation_name =
