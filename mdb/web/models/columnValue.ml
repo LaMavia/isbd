@@ -3,6 +3,7 @@
 type t =
   | I64 of Int64Column.t list
   | VC of VarcharColumn.t list
+  | BL of BoolColumn.t list
 
 module Internal = struct
   open Yojson.Safe.Util
@@ -19,6 +20,7 @@ let yojson_of_t (v : t) : Yojson.Safe.t =
   match v with
   | I64 is -> `List (List.map Int64Column.yojson_of_t is)
   | VC ss -> `List (List.map VarcharColumn.yojson_of_t ss)
+  | BL bs -> `List (List.map BoolColumn.yojson_of_t bs)
 ;;
 
 let of_lib_array (col : Lib.Column.col) arr =
@@ -45,7 +47,19 @@ let of_lib_array (col : Lib.Column.col) arr =
              raise
                (Failure
                   (Printf.sprintf
-                     "Expected an INT but got %s instead"
+                     "Expected a VARCHAR but got %s instead"
+                     (Lib.Data.Types.to_str v))))
+         list)
+  | `ColBool ->
+    BL
+      (List.map
+         (function
+           | `DataBool b -> b
+           | v ->
+             raise
+               (Failure
+                  (Printf.sprintf
+                     "Expected a BOOL but got %s instead"
                      (Lib.Data.Types.to_str v))))
          list)
 ;;

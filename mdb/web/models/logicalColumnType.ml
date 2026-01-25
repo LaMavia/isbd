@@ -1,6 +1,7 @@
 type t =
   | Int64
   | Varchar
+  | Bool
 
 let t_of_yojson = function
   | `String "INT64" -> Int64
@@ -15,16 +16,19 @@ let t_of_yojson = function
 let yojson_of_t = function
   | Int64 -> `String "INT64"
   | Varchar -> `String "VARCHAR"
+  | Bool -> Yojson.json_error "Unexpected bool"
 ;;
 
 let of_lib (t : Lib.Column.col) : t =
   match t with
   | `ColInt -> Int64
   | `ColVarchar -> Varchar
+  | `ColBool -> Bool
 ;;
 
 let to_lib (t : t) : Lib.Column.col =
   match t with
   | Int64 -> `ColInt
   | Varchar -> `ColVarchar
+  | Bool -> `ColBool
 ;;

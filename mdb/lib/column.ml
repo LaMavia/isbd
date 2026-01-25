@@ -3,6 +3,7 @@ open Bigarray
 type col =
   [ `ColVarchar
   | `ColInt
+  | `ColBool
   ]
 
 type t = string * col
@@ -10,12 +11,14 @@ type t = string * col
 let col_constr_of_type = function
   | '\001' -> Option.some `ColInt
   | '\002' -> Option.some `ColVarchar
+  | '\003' -> Option.some `ColBool
   | _ -> Option.None
 ;;
 
 let byte_of_col = function
   | `ColInt -> '\001'
   | `ColVarchar -> '\002'
+  | `ColBool -> '\003'
 ;;
 
 module type LogicalColumn = sig
@@ -156,6 +159,24 @@ module Columns = struct
     ;;
   end
 
+  module BoolColumn : Column with type t := bool = struct
+    let physical_length = 1
+
+    let deserialize_dispenser bfs bi =
+      let int_dispenser = IntColumn.deserialize_dispenser bfs bi in
+      fun () -> int_dispenser () |> Option.map (( = ) 1L)
+    ;;
+
+    let deserialize_seq bfs bi = Seq.of_dispenser @@ deserialize_dispenser bfs bi
+    let decode_fragments = IntColumn.decode_fragments
+    let encode_fragments = IntColumn.encode_fragments
+
+    let serialize v bfs bi =
+      let int_val = (if v then 1 else 0) |> Int64.of_int in
+      IntColumn.serialize int_val bfs bi
+    ;;
+  end
+
   module ColumnInfoColumn : Column with type t := t = struct
     let physical_length = 2
 
@@ -250,4 +271,18 @@ module IntColDesc : ColDesc = struct
   ;;
 end
 
+module BoolColDesc : ColDesc = struct
+  include Columns.BoolColumn
+
+  type t = bool
+
+  let to_data b = `DataBool b
+
+  let serialize_mut = function
+    | `DataBool b -> serialize b
+    | d -> Internal.raise_serialize_error (`DataBool ()) d
+  ;;
+end
+
+module BoolLogCol = MakeLogCol (BoolColDesc)
 module IntLogCol = MakeLogCol (IntColDesc)

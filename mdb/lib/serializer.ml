@@ -50,17 +50,20 @@ module Make (OC : Cursor.CursorInterface) = struct
       logcols
       |> Array.map (function
         | _, `ColVarchar -> Column.VarcharLogCol.physical_length
-        | _, `ColInt -> Column.IntLogCol.physical_length)
+        | _, `ColInt -> Column.IntLogCol.physical_length
+        | _, `ColBool -> Column.BoolLogCol.physical_length)
     and serializers =
       logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.serialize_mut
-        | _, `ColVarchar -> Column.VarcharLogCol.serialize_mut)
+        | _, `ColVarchar -> Column.VarcharLogCol.serialize_mut
+        | _, `ColBool -> Column.BoolLogCol.serialize_mut)
     and encoders =
       logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.encode_fragments
-        | _, `ColVarchar -> Column.VarcharLogCol.encode_fragments)
+        | _, `ColVarchar -> Column.VarcharLogCol.encode_fragments
+        | _, `ColBool -> Column.BoolLogCol.encode_fragments)
     in
     let total_physcols = Array.fold_right ( + ) phys_lens 0 in
     let@ record_bfs =

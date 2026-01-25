@@ -15,6 +15,7 @@ let string_of_expt_type : expr_type -> string = function
 let expr_type_of_lib : Lib.Column.col -> expr_type = function
   | `ColInt -> `Int
   | `ColVarchar -> `Varchar
+  | `ColBool -> `Bool
 ;;
 
 let lib_of_expr_type_exc : expr_type -> Lib.Column.col = function

@@ -34,6 +34,7 @@ module Make (IC : Cursor.CursorInterface) = struct
   let physlen_of_logcol = function
     | _, `ColVarchar -> Column.VarcharLogCol.physical_length
     | _, `ColInt -> Column.IntLogCol.physical_length
+    | _, `ColBool -> Column.BoolLogCol.physical_length
   ;;
 
   let deserialize ?(decode = true) ?column_filter:column_filter_opt (input_cursor : IC.t) =
@@ -55,12 +56,14 @@ module Make (IC : Cursor.CursorInterface) = struct
       raw_logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.deserialize_iter
-        | _, `ColVarchar -> Column.VarcharLogCol.deserialize_iter)
+        | _, `ColVarchar -> Column.VarcharLogCol.deserialize_iter
+        | _, `ColBool -> Column.BoolLogCol.deserialize_iter)
     and decoders =
       raw_logcols
       |> Array.map (function
         | _, `ColInt -> Column.IntLogCol.decode_fragments
-        | _, `ColVarchar -> Column.VarcharLogCol.decode_fragments)
+        | _, `ColVarchar -> Column.VarcharLogCol.decode_fragments
+        | _, `ColBool -> Column.BoolLogCol.decode_fragments)
     in
     let raw_physcol_idx_of_raw_logcol_idx =
       Array.to_seq phys_lens |> Seq.scan ( + ) 0 |> Array.of_seq

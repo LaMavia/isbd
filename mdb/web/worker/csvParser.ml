@@ -14,6 +14,10 @@ let parse_value (type_ : col) value =
              }
            ])
   | `ColVarchar -> Result.Ok (`DataVarchar value)
+  | `ColBool ->
+    Error
+      Models.MultipleProblemsError.
+        [ { error = "Unexpected bool value in CSV"; context = None } ]
 ;;
 
 (** [parse_channel ~selector ~columns csv_channel] selects the fields from 

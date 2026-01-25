@@ -3,7 +3,8 @@ let test_func (logcols : (string * Column.col) array) (s : Data.Types.t array Se
     Array.map
       (function
         | _, `ColInt -> Either.left (0., 0.)
-        | _, `ColVarchar -> Either.right (Hashtbl.create 26 : (char, int) Hashtbl.t))
+        | _, `ColVarchar -> Either.right (Hashtbl.create 26 : (char, int) Hashtbl.t)
+        | _, `ColBool -> raise @@ Invalid_argument "Bool column not expected in test")
       logcols
   and aux u r =
     Array.iteri
