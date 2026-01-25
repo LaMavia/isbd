@@ -21,7 +21,7 @@ let expr_type_of_lib : Lib.Column.col -> expr_type = function
 let lib_of_expr_type_exc : expr_type -> Lib.Column.col = function
   | `Int -> `ColInt
   | `Varchar -> `ColVarchar
-  | `Bool -> raise (Invalid_argument "Can't cast Bool to data")
+  | `Bool -> `ColBool
 ;;
 
 type column_reference_expression =

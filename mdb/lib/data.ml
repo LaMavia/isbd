@@ -54,6 +54,7 @@ module Types = struct
     match a, b with
     | `DataInt ai, `DataInt bi -> External.compare_int64 ai bi
     | `DataVarchar avc, `DataVarchar bvc -> External.compare_string avc bvc
+    | `DataBool ab, `DataBool bb -> compare ab bb
     | _ ->
       invalid_arg
         (Printf.sprintf "[%s] can't compare %s, and %s" __LOC__ (to_str a) (to_str b))
