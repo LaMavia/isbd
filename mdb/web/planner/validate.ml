@@ -261,6 +261,10 @@ let get_copy_query_table ms (q : CopyQuery.t) =
   Metastore.Store.lookup_table_by_name q.destination_table_name ms
 ;;
 
+let get_select_all_query_table ms (q : SelectAllQuery.t) =
+  Metastore.Store.lookup_table_by_name q.table_name ms
+;;
+
 (* Returns the first referenced table that exists *)
 let get_select_query_table ms (q : SelectQuery.t) =
   let open ColumnExpression in
@@ -287,4 +291,5 @@ let get_query_table ms =
   function
   | QD_SelectQuery q -> get_select_query_table ms q
   | QD_CopyQuery q -> get_copy_query_table ms q
+  | QD_SelectAllQuery q -> get_select_all_query_table ms q
 ;;

@@ -190,6 +190,39 @@ let process_copy ms tq task_id query_definition query =
            tq))
 ;;
 
+let process_select_all
+      (ms : Metastore.Store.t)
+      tq
+      task_id
+      task
+      (query : Models.SelectAllQuery.t)
+  =
+  let id = TaskQueue.uuid_of_id task_id in
+  let td_opt = task.td_opt in
+  let td = Option.get td_opt in
+  let tlock =
+    Option.map Metastore.TableData.(fun td -> Hashtbl.find ms.locks td.id) td_opt
+    |> Option.get
+  in
+  Metastore.Store.with_table td_opt ms
+  @@ fun () ->
+  Mutex.protect tlock
+  @@ fun () ->
+  TaskQueue.set_status task_id Running tq;
+  let result_td =
+    Metastore.TableData.create
+      ~name:(Printf.sprintf "%s-result" (TaskQueue.string_of_id task_id))
+      ~id
+      ~columns:td.columns
+  in
+  Metastore.Store.with_read_table td ms
+  @@ fun data ->
+  let open Planner.Eval in
+  data
+  |> limit ~limit_clause_opt:query.limit_clause
+     @> Metastore.Store.create_result result_td ms
+;;
+
 let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
   Logger.log `Info "Spawned";
   flush_all ();
@@ -206,6 +239,7 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
       (try
          match query_def with
          | QD_SelectQuery query -> process_select ms tq task_id task query_def query
+         | QD_SelectAllQuery query -> process_select_all ms tq task_id task query
          | QD_CopyQuery query ->
            Mutex.protect ms.store_lock
            @@ fun () ->

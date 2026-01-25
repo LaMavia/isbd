@@ -57,5 +57,5 @@ let parse_channel ~selector ~columns csv_channel =
 let read_csv ~has_header path =
   Unix.openfile path [ O_RDONLY ] 0o640
   |> Unix.in_channel_of_descr
-  |> Csv.of_channel ~has_header ~strip:true ~separator:';'
+  |> Csv.of_channel ~has_header ~strip:true ~separator:','
 ;;
