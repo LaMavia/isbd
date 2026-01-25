@@ -17,3 +17,4 @@ bun.lock
 nsq.*
 out
 .jpg
+mdb_data/*
