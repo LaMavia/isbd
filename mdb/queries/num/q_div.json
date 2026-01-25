@@ -12,6 +12,12 @@
         "rightOperand": { "tableName": "num", "columnName": "c" }
       },
       { "tableName": "num", "columnName": "d" }
+    ],
+    "orderByClause": [
+      {
+        "columnIndex": 2,
+        "ascending": true
+      }
     ]
   }
 }

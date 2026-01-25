@@ -52,7 +52,7 @@ module Types = struct
 
   let cmp (a : t) (b : t) =
     match a, b with
-    | `DataInt ai, `DataInt bi -> External.compare_int64 ai bi
+    | `DataInt ai, `DataInt bi -> Int64.compare ai bi
     | `DataVarchar avc, `DataVarchar bvc -> External.compare_string avc bvc
     | `DataBool ab, `DataBool bb -> compare ab bb
     | _ ->

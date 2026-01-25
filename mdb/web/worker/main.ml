@@ -195,6 +195,7 @@ let process_select_all
       tq
       task_id
       task
+      query_definition
       (query : Models.SelectAllQuery.t)
   =
   let id = TaskQueue.uuid_of_id task_id in
@@ -220,7 +221,8 @@ let process_select_all
   let open Planner.Eval in
   data
   |> limit ~limit_clause_opt:query.limit_clause
-     @> Metastore.Store.create_result result_td ms
+     @> Metastore.Store.create_result result_td ms;
+  TaskQueue.add_result task_id (Ok { query_definition; result_id = Some id }) Completed tq
 ;;
 
 let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
@@ -239,7 +241,8 @@ let main (ms : Metastore.Store.t) (tq : TaskQueueMiddleware.t) () =
       (try
          match query_def with
          | QD_SelectQuery query -> process_select ms tq task_id task query_def query
-         | QD_SelectAllQuery query -> process_select_all ms tq task_id task query
+         | QD_SelectAllQuery query ->
+           process_select_all ms tq task_id task query_def query
          | QD_CopyQuery query ->
            Mutex.protect ms.store_lock
            @@ fun () ->
